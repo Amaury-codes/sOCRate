@@ -1,0 +1,19 @@
+/* gui/style.css */
+body {
+    background-color: #f0f2f5; /* Un gris très clair */
+}
+
+#log-entries {
+    height: 300px;
+    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+    font-size: 0.85rem;
+    overflow-y: auto;
+}
+
+.list-group-item {
+    cursor: pointer;
+}
+
+.modal-body {
+    background-color: #f8f9fa;
+}
