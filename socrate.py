@@ -357,6 +357,6 @@ if __name__ == '__main__':
     
     window.events.closing += api.shutdown
 
-    webview.start(debug=True) # Mettre debug=False pour la version finale
+    webview.start()
 
 # --- FIN DE LA PARTIE 2/2 ---
