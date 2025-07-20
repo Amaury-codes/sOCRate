@@ -51,12 +51,13 @@ FOLDER_RENAME_TOKENS = ["[NOM_UTILISATEUR]", "[NOM_ORDINATEUR]", "[DATE]"]
 COUNTER_RESET_OPTIONS = ["Jamais", "Chaque jour", "Chaque mois", "Chaque année"]
 
 # --- Logique Tesseract ---
+TESSDATA_DIR_CONFIG = '' # Variable globale pour stocker le chemin
 if getattr(sys, 'frozen', False):
     tesseract_path_base = os.path.join(sys._MEIPASS, 'Tesseract-OCR')
-    # Sur Mac, l'exécutable n'a pas d'extension .exe
     tesseract_exe = 'tesseract.exe' if IS_WINDOWS else 'tesseract'
     pytesseract.pytesseract.tesseract_cmd = os.path.join(tesseract_path_base, tesseract_exe)
-    os.environ['TESSDATA_PREFIX'] = os.path.join(tesseract_path_base, 'tessdata')
+    # On stocke le chemin vers tessdata pour plus tard
+    TESSDATA_DIR_CONFIG = f'--tessdata-dir "{os.path.join(tesseract_path_base, "tessdata")}"'
 else:
     if IS_WINDOWS:
         pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
@@ -212,7 +213,7 @@ class OCRWatcher(threading.Thread):
                     img.save(img_buffer, format='JPEG', quality=85)
                     img_buffer.seek(0)
                     compressed_img_object = Image.open(img_buffer)
-                    pdf_page_with_ocr_bytes = pytesseract.image_to_pdf_or_hocr(compressed_img_object, lang=LANG_MAP[config['lang']], extension='pdf')
+                    pdf_page_with_ocr_bytes = pytesseract.image_to_pdf_or_hocr(compressed_img_object, lang=LANG_MAP[config['lang']], extension='pdf', config=TESSDATA_DIR_CONFIG)
                     pdf_stream = io.BytesIO(pdf_page_with_ocr_bytes)
                     merger.append(pdf_stream)
 
