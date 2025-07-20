@@ -45,32 +45,36 @@ LOG_FILE = os.path.join(LOG_DIR, "app.log")
 
 LANG_MAP = {"Français": "fra", "English": "eng", "Português": "por"}
 SOURCE_ACTION_OPTIONS = ["Conserver l'original", "Déplacer l'original", "Écraser l'original"]
-OUTPUT_DEST_OPTIONS = ["Dans un sous-dossier 'Traités_OCR'", "Dans le même dossier que l'original", "Dans un dossier spécifique"]
+OUTPUT_DEST_OPTIONS = ["Dans un sous-ddessier 'Traités_OCR'", "Dans le même dossier que l'original", "Dans un dossier spécifique"]
 FILE_RENAME_TOKENS = ["[NOM_ORIGINAL]", "[DATE]", "[HEURE]", "[COMPTEUR]", "[POIDS_FICHIER]", "[NOMBRE_PAGES]"]
 FOLDER_RENAME_TOKENS = ["[NOM_UTILISATEUR]", "[NOM_ORDINATEUR]", "[DATE]"]
 COUNTER_RESET_OPTIONS = ["Jamais", "Chaque jour", "Chaque mois", "Chaque année"]
 
-# --- Logique Tesseract ---
-TESSDATA_DIR_CONFIG = '' # Variable globale pour stocker le chemin
+# --- Logique Tesseract (Version Finale et Robuste) ---
+TESSDATA_DIR_CONFIG = '' # On initialise la variable
 if getattr(sys, 'frozen', False):
+    # En mode compilé (.exe ou .app)
     tesseract_path_base = os.path.join(sys._MEIPASS, 'Tesseract-OCR')
     tesseract_exe = 'tesseract.exe' if IS_WINDOWS else 'tesseract'
     pytesseract.pytesseract.tesseract_cmd = os.path.join(tesseract_path_base, tesseract_exe)
-    # On stocke le chemin vers tessdata pour plus tard
-    TESSDATA_DIR_CONFIG = f'--tessdata-dir "{os.path.join(tesseract_path_base, "tessdata")}"'
+    
+    # On construit la chaîne de configuration pour le dossier tessdata
+    tessdata_path = os.path.join(tesseract_path_base, "tessdata")
+    TESSDATA_DIR_CONFIG = f'--tessdata-dir "{tessdata_path}"'
 else:
+    # En mode développement
     if IS_WINDOWS:
-        pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+        tesseract_path_dev_win = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+        if os.path.exists(tesseract_path_dev_win):
+            pytesseract.pytesseract.tesseract_cmd = tesseract_path_dev_win
     else: # macOS
-        # Chemin typique pour Mac Apple Silicon
-        tesseract_path_dev = '/opt/homebrew/bin/tesseract'
-        if not os.path.exists(tesseract_path_dev):
-            # Chemin typique pour Mac Intel
-            tesseract_path_dev = '/usr/local/bin/tesseract'
-        if os.path.exists(tesseract_path_dev):
-            pytesseract.pytesseract.tesseract_cmd = tesseract_path_dev
+        tesseract_path_dev_mac = '/opt/homebrew/bin/tesseract'
+        if not os.path.exists(tesseract_path_dev_mac):
+            tesseract_path_dev_mac = '/usr/local/bin/tesseract'
+        if os.path.exists(tesseract_path_dev_mac):
+            pytesseract.pytesseract.tesseract_cmd = tesseract_path_dev_mac
 
-# --- Fonctions utilitaires ---
+# --- Fonctions utilitaires (inchangées) ---
 def load_state():
     if os.path.exists(STATE_FILE):
         try:
@@ -165,36 +169,28 @@ class OCRWatcher(threading.Thread):
             with fitz.open(pdf_path) as doc: return any(len(page.get_text().strip()) > 50 for page in doc)
         except Exception as e: self.log(f"Impossible de vérifier le texte de {os.path.basename(pdf_path)}: {e}", "warning"); return False
 
-    # --- NOUVELLE MÉTHODE ---
     def wait_for_file_stability(self, file_path, max_wait_time=30, check_interval=1):
-        """Attend qu'un fichier cesse de changer de taille avant de le traiter."""
         start_time = time.time()
         while time.time() - start_time < max_wait_time:
             try:
                 initial_size = os.path.getsize(file_path)
                 time.sleep(check_interval)
                 current_size = os.path.getsize(file_path)
-                
                 if initial_size == current_size:
                     self.log(f"Le fichier '{os.path.basename(file_path)}' est stable.", "info")
-                    return True # Le fichier est stable
+                    return True
             except FileNotFoundError:
-                # Le fichier a peut-être été supprimé pendant l'attente
                 self.log(f"Le fichier '{os.path.basename(file_path)}' a disparu pendant la vérification.", "warning")
                 return False
-        
         self.log(f"Le fichier '{os.path.basename(file_path)}' n'est pas devenu stable après {max_wait_time}s. Ignoré.", "error")
-        return False # Timeout
+        return False
 
     def process_pdf(self, pdf_path):
-        # ... (le code de cette fonction reste identique à la version précédente)
         base_folder = os.path.dirname(pdf_path); filename = os.path.basename(pdf_path)
         config = self.configs_map.get(base_folder)
         if not config: return
-
         self.log(f"Traitement de '{filename}'...")
-        if self.pdf_has_text(pdf_path):
-            self.log(f"'{filename}' contient déjà du texte. Ignoré.", "info"); return
+        if self.pdf_has_text(pdf_path): self.log(f"'{filename}' contient déjà du texte. Ignoré.", "info"); return
 
         try:
             new_filename = build_new_filename(config, pdf_path, config['path'])
@@ -213,46 +209,39 @@ class OCRWatcher(threading.Thread):
                     img.save(img_buffer, format='JPEG', quality=85)
                     img_buffer.seek(0)
                     compressed_img_object = Image.open(img_buffer)
+                    # --- MODIFICATION FINALE ICI ---
                     pdf_page_with_ocr_bytes = pytesseract.image_to_pdf_or_hocr(compressed_img_object, lang=LANG_MAP[config['lang']], extension='pdf', config=TESSDATA_DIR_CONFIG)
                     pdf_stream = io.BytesIO(pdf_page_with_ocr_bytes)
                     merger.append(pdf_stream)
-
                 temp_output_path = output_path + ".tmp"
                 with open(temp_output_path, "wb") as f_out: merger.write(f_out)
 
             source_action = config.get("source_action", "Conserver l'original")
             if source_action == "Écraser l'original":
-                os.remove(pdf_path)
-                self.log(f"Original '{filename}' supprimé pour être écrasé.")
+                final_path = os.path.join(base_folder, new_filename)
+                shutil.move(temp_output_path, final_path)
+                if pdf_path != final_path: os.remove(pdf_path)
+                self.log(f"'{filename}' écrasé par la version OCRisée '{new_filename}'.")
             elif source_action == "Déplacer l'original":
                 archive_folder = build_dynamic_path(config.get("archive_path_pattern"))
-                os.makedirs(archive_folder, exist_ok=True)
-                archive_path = os.path.join(archive_folder, filename)
-                shutil.move(pdf_path, archive_path)
-                self.log(f"Original déplacé vers '{archive_folder}'.")
-            else:
-                 self.log(f"Original '{filename}' conservé.")
-            shutil.move(temp_output_path, output_path)
-            self.log(f"Fichier traité et sauvegardé : '{output_path}'.")
-
+                os.makedirs(archive_folder, exist_ok=True); archive_path = os.path.join(archive_folder, filename)
+                shutil.move(pdf_path, archive_path); shutil.move(temp_output_path, output_path)
+                self.log(f"'{filename}' traité. Original déplacé vers '{archive_folder}', OCR sauvé dans '{output_folder}'.")
+            elif source_action == "Conserver l'original":
+                shutil.move(temp_output_path, output_path)
+                self.log(f"'{filename}' traité. Original conservé, OCR sauvé dans '{output_folder}'.")
         except Exception as e: self.log(f"Erreur critique sur '{filename}': {e}", "error")
 
-    # --- SOUS-CLASSE MODIFIÉE ---
     class PDFHandler(FileSystemEventHandler):
         def __init__(self, watcher): self.watcher = watcher; self.last_processed = {}
         def on_created(self, event):
             if event.is_directory or not event.src_path.lower().endswith('.pdf'): return
             if event.src_path in self.last_processed and time.time() - self.last_processed[event.src_path] < 5: return
             self.last_processed[event.src_path] = time.time()
-            
-            # --- MODIFICATION ICI : On remplace time.sleep(2) par notre nouvelle logique ---
             self.watcher.log(f"Nouveau fichier détecté : {event.src_path}. Vérification de la stabilité...")
-            
-            # On lance la vérification dans un thread pour ne pas bloquer le watcher
             threading.Thread(target=self.check_and_process, args=(event.src_path,)).start()
 
         def check_and_process(self, path):
-            # Si le fichier est stable, on lance le traitement OCR
             if self.watcher.wait_for_file_stability(path):
                 threading.Thread(target=self.watcher.process_pdf, args=(path,)).start()
 
@@ -263,24 +252,20 @@ class OCRWatcher(threading.Thread):
 class FolderSettingsDialog(ctk.CTkToplevel):
     def __init__(self, parent, config=None):
         super().__init__(parent); self.transient(parent)
-        self.title("Paramètres de la Règle de Surveillance"); self.geometry("1000x620")
+        self.title("Paramètres de la Règle de Surveillance"); self.geometry("900x620")
         self.result = None; self.create_widgets(config); self.grab_set()
 
     def create_widgets(self, config):
         config = config or {}
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(3, weight=1) # Permet au dernier frame de s'étendre un peu
-
+        self.grid_columnconfigure(0, weight=1); self.grid_rowconfigure(3, weight=1)
         ctk.CTkLabel(self, text="Dossier à surveiller :", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=20, pady=(20, 5), sticky="w")
         path_frame = ctk.CTkFrame(self, fg_color="transparent"); path_frame.grid(row=1, column=0, padx=20, sticky="ew")
         self.path_entry = ctk.CTkEntry(path_frame); self.path_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
         self.path_entry.insert(0, config.get("path", "")); ctk.CTkButton(path_frame, text="...", width=30, command=lambda: self.browse_for_entry(self.path_entry)).pack(side="left")
 
-        # --- Création d'une grille principale pour les deux colonnes ---
         main_grid = ctk.CTkFrame(self, fg_color="transparent"); main_grid.grid(row=2, column=0, padx=20, pady=15, sticky="nsew")
         main_grid.grid_columnconfigure((0, 1), weight=1)
 
-        # --- Colonne de Gauche : Gestion du Fichier Original ---
         source_frame = ctk.CTkFrame(main_grid); source_frame.grid(row=0, column=0, sticky="nsew", padx=(0,10))
         ctk.CTkLabel(source_frame, text="1. Fichier Original", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=10, pady=5)
         ctk.CTkLabel(source_frame, text="Après traitement OCR :").pack(padx=10, anchor="w")
@@ -291,10 +276,9 @@ class FolderSettingsDialog(ctk.CTkToplevel):
         archive_entry_frame = ctk.CTkFrame(self.archive_frame, fg_color="transparent"); archive_entry_frame.pack(fill="x")
         self.archive_path_entry = ctk.CTkEntry(archive_entry_frame, placeholder_text="Ex: C:/Archives/[DATE]")
         self.archive_path_entry.pack(side="left", fill="x", expand=True, padx=(0,10)); self.archive_path_entry.insert(0, config.get("archive_path_pattern", ""))
-        ctk.CTkButton(archive_entry_frame, text="...", width=30, command=lambda: self.browse_for_entry(self.archive_path_entry)).pack(side="left")
+        ctk.CTkButton(archive_entry_frame, text="Parcourir...", command=lambda: self.browse_for_entry(self.archive_path_entry)).pack(side="left")
         self.create_token_buttons(self.archive_frame, self.archive_path_entry, FOLDER_RENAME_TOKENS)
 
-        # --- Colonne de Droite : Gestion du Fichier Traité ---
         output_frame = ctk.CTkFrame(main_grid); output_frame.grid(row=0, column=1, sticky="nsew", padx=(10,0))
         ctk.CTkLabel(output_frame, text="2. Fichier Traité (avec OCR)", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=10, pady=5)
         ctk.CTkLabel(output_frame, text="Langue OCR :").pack(padx=10, anchor="w")
@@ -308,18 +292,15 @@ class FolderSettingsDialog(ctk.CTkToplevel):
         output_entry_frame = ctk.CTkFrame(self.output_path_frame, fg_color="transparent"); output_entry_frame.pack(fill="x")
         self.output_path_entry = ctk.CTkEntry(output_entry_frame, placeholder_text="Ex: D:/Factures/[DATE]")
         self.output_path_entry.pack(side="left", fill="x", expand=True, padx=(0,10)); self.output_path_entry.insert(0, config.get("output_path_pattern", ""))
-        ctk.CTkButton(output_entry_frame, text="...", width=30, command=lambda: self.browse_for_entry(self.output_path_entry)).pack(side="left")
+        ctk.CTkButton(output_entry_frame, text="Parcourir...", command=lambda: self.browse_for_entry(self.output_path_entry)).pack(side="left")
         self.create_token_buttons(self.output_path_frame, self.output_path_entry, FOLDER_RENAME_TOKENS)
 
-        # --- Nommage et Compteur (sous la grille) ---
         bottom_frame = ctk.CTkFrame(self, fg_color="transparent"); bottom_frame.grid(row=3, column=0, padx=20, sticky="nsew")
         bottom_frame.grid_columnconfigure(0, weight=1)
-
         ctk.CTkLabel(bottom_frame, text="Modèle de nommage du fichier :", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(10,0))
         self.rename_pattern_entry = ctk.CTkEntry(bottom_frame, placeholder_text="Ex: [NOM_ORIGINAL]_[DATE]")
         self.rename_pattern_entry.pack(fill="x", pady=5); self.rename_pattern_entry.insert(0, config.get("rename_pattern", "[NOM_ORIGINAL]_ocr"))
         self.create_token_buttons(bottom_frame, self.rename_pattern_entry, FILE_RENAME_TOKENS, rows=2)
-        
         counter_frame = ctk.CTkFrame(bottom_frame); counter_frame.pack(pady=10, fill="x")
         counter_frame.grid_columnconfigure((0, 1), weight=1)
         ctk.CTkLabel(counter_frame, text="Options du jeton [COMPTEUR] :", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, columnspan=2, sticky="w", padx=10)
@@ -329,8 +310,7 @@ class FolderSettingsDialog(ctk.CTkToplevel):
         ctk.CTkLabel(counter_frame, text="Nombre de chiffres :").grid(row=1, column=1, sticky="w", pady=(5,0), padx=10)
         self.counter_padding_entry = ctk.CTkEntry(counter_frame, placeholder_text="ex: 3")
         self.counter_padding_entry.grid(row=2, column=1, sticky="ew", padx=10); self.counter_padding_entry.insert(0, str(config.get("counter_padding", 3)))
-
-        # --- Boutons de validation ---
+        
         btn_frame = ctk.CTkFrame(self, fg_color="transparent"); btn_frame.grid(row=4, column=0, pady=20)
         ctk.CTkButton(btn_frame, text="✔ Valider", command=self.on_ok, fg_color="#2E7D32", hover_color="#1B5E20").pack(side="left", padx=10)
         ctk.CTkButton(btn_frame, text="Annuler", command=self.on_cancel, fg_color="#D32F2F", hover_color="#B71C1C").pack(side="left", padx=10)
@@ -378,19 +358,12 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         try:
-            if sys.platform == "win32":
-                self.state('zoomed')
-            elif sys.platform == "darwin": # macOS
-                self.attributes('-zoomed', True)
-            else: # Linux et autres
-                self.attributes('-zoomed', 1)
+            if sys.platform == "win32": self.state('zoomed')
+            elif sys.platform == "darwin": self.attributes('-zoomed', True)
+            else: self.attributes('-zoomed', 1)
         except tk.TclError:
-            # --- PLAN B: La méthode manuelle ---
-            # Si la méthode standard échoue, on redimensionne manuellement la fenêtre.
             print("Mode maximisé standard non supporté, passage en mode manuel.")
-            screen_width = self.winfo_screenwidth()
-            screen_height = self.winfo_screenheight()
-            self.geometry(f"{screen_width}x{screen_height}+0+0")
+            self.geometry(f"{self.winfo_screenwidth()}x{self.winfo_screenheight()}+0+0")
         self.title(f"{APP_NAME} - OCR Automatisé"); self.minsize(800, 600)
         ctk.set_appearance_mode("light"); self.grid_columnconfigure(0, weight=1); self.grid_rowconfigure(0, weight=1)
         self.main_frame = ctk.CTkFrame(self); self.main_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
@@ -528,6 +501,7 @@ class App(ctk.CTk):
         return os.path.abspath(sys.argv[0])
 
     def add_to_startup(self):
+        if not IS_WINDOWS: return
         try:
             key = winreg.HKEY_CURRENT_USER; subkey = r"Software\Microsoft\Windows\CurrentVersion\Run"
             with winreg.OpenKey(key, subkey, 0, winreg.KEY_SET_VALUE) as reg_key: winreg.SetValueEx(reg_key, APP_NAME, 0, winreg.REG_SZ, self.get_exe_path())
@@ -535,6 +509,7 @@ class App(ctk.CTk):
         except Exception as e: self.log(f"Erreur d'ajout au démarrage : {e}", "error")
 
     def remove_from_startup(self):
+        if not IS_WINDOWS: return
         try:
             key = winreg.HKEY_CURRENT_USER; subkey = r"Software\Microsoft\Windows\CurrentVersion\Run"
             with winreg.OpenKey(key, subkey, 0, winreg.KEY_WRITE) as reg_key: winreg.DeleteValue(reg_key, APP_NAME)
