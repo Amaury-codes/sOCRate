@@ -1,97 +1,98 @@
 # .github/workflows/build.yml
 
-name: Build sOCRate pour macOS et Windows
+name: Build sOCRate Executables
 
+# Déclenche le workflow à chaque push sur la branche 'main' ou manuellement
 on:
-  # Se déclenche quand vous poussez du code sur la branche 'main'
   push:
-    branches: [ main ]
-  # Permet de lancer l'action manuellement depuis l'onglet "Actions" de GitHub
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
-  # --- JOB 1 : COMPILATION POUR WINDOWS ---
+  # ============================================
+  # ===   JOB 1 : CONSTRUCTION POUR WINDOWS  ===
+  # ============================================
   build-windows:
-    runs-on: windows-latest # Utilise une machine virtuelle Windows
-
+    runs-on: windows-latest
     steps:
-    # Étape 1: Récupère votre code depuis le dépôt GitHub
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      # Récupère le code de votre dépôt
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    # Étape 2: Installe Python
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+      # Installe Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-    # Étape 3: Installe Tesseract OCR via le gestionnaire Chocolatey
-    - name: Install Tesseract OCR
-      run: choco install tesseract-ocr --params "/l fra,eng,por" -y
+      # Installe les dépendances Python
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-    # Étape 4: Installe les dépendances Python
-    - name: Install Python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install pywebview watchdog pytesseract PyMuPDF pypdf appdirs pyinstaller
+      # Installe Tesseract OCR avec les langues nécessaires via Chocolatey
+      - name: Install Tesseract OCR
+        run: choco install tesseract-ocr --params='"/l fra,eng,por"' -y
 
-    # Étape 5: Compile l'application avec PyInstaller
-    - name: Build executable for Windows
-      run: |
-        pyinstaller --noconsole --onefile --windowed `
-        --add-data "gui;gui" `
-        --add-data "C:/Program Files/Tesseract-OCR;Tesseract-OCR" `
-        --icon="icon.ico" `
-        socrate.py
+      # Compile l'application en un .exe unique
+      - name: Build Windows executable
+        run: |
+          pyinstaller --windowed --onefile --name sOCRate `
+          --icon=assets/icon.ico `
+          --add-data "C:/Program Files/Tesseract-OCR;Tesseract-OCR" `
+          socrate.py
 
-    # Étape 6: Met en ligne le .exe final comme un "artefact" téléchargeable
-    - name: Upload Windows Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: sOCRate-Windows-App
-        path: dist/socrate.exe
+      # Met en ligne l'exécutable pour que vous puissiez le télécharger
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sOCRate-Windows-Executable
+          path: dist/sOCRate.exe
 
-
-  # --- JOB 2 : COMPILATION POUR MACOS ---
+  # ===========================================
+  # ===   JOB 2 : CONSTRUCTION POUR MACOS   ===
+  # ===========================================
   build-macos:
-    runs-on: macos-latest # Utilise une machine virtuelle macOS
-
+    runs-on: macos-latest
     steps:
-    # Étape 1: Récupère votre code
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      # Récupère le code de votre dépôt
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    # Étape 2: Installe Python
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+      # Installe Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-    # Étape 3: Installe Tesseract OCR via le gestionnaire Homebrew
-    - name: Install Tesseract OCR
-      run: brew install tesseract
+      # Installe les dépendances Python
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-    # Étape 4: Installe les dépendances Python
-    - name: Install Python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install pywebview watchdog pytesseract PyMuPDF pypdf appdirs pyinstaller
+      # Installe Tesseract OCR et les langues via Homebrew
+      - name: Install Tesseract OCR via Homebrew
+        run: brew install tesseract tesseract-lang
 
-    # Étape 5: Compile l'application avec PyInstaller
-    - name: Build application for macOS
-      run: |
-        pyinstaller --noconsole --onefile --windowed \
-        --add-data "gui:gui" \
-        --icon="icon.icns" \
-        socrate.py
-    
-    # Étape 6: Compresse l'application .app dans un .zip pour faciliter le téléchargement
-    - name: Zip .app file
-      run: zip -r sOCRate-macOS.zip dist/socrate.app
+      # Compile l'application en un .app
+      - name: Build macOS application
+        run: |
+          # On trouve dynamiquement le chemin d'installation de Tesseract pour la robustesse
+          TESSERACT_PATH=$(brew --prefix tesseract)
+          pyinstaller --windowed --name sOCRate `
+          --icon=assets/icon.icns `
+          --add-data "$TESSERACT_PATH:Tesseract-OCR" `
+          socrate.py
 
-    # Étape 7: Met en ligne le .zip final comme un "artefact" téléchargeable
-    - name: Upload macOS Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: sOCRate-macOS-App
-        path: sOCRate-macOS.zip
+      # Compresse le .app dans un .zip pour faciliter le téléchargement
+      - name: Package macOS application
+        run: zip -r sOCRate-macOS.zip dist/sOCRate.app
+
+      # Met en ligne le .zip pour que vous puissiez le télécharger
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sOCRate-macOS-App
+          path: sOCRate-macOS.zip

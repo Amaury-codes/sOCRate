@@ -1,0 +1,10 @@
+# requirements.txt
+
+customtkinter
+pillow
+watchdog
+pytesseract
+PyMuPDF
+pypdf
+appdirs
+pyinstaller
