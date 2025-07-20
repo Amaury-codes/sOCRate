@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  # --- JOB 1 : CONSTRUCTION POUR WINDOWS (INCHANGÉ) ---
+  # --- JOB 1 : CONSTRUCTION POUR WINDOWS (INCHANGÉ ET CORRECT) ---
   build-windows:
     runs-on: windows-latest
     steps:
@@ -36,7 +36,7 @@ jobs:
           name: sOCRate-Windows-Executable
           path: dist/sOCRate.exe
 
-  # --- JOB 2 : CONSTRUCTION POUR MACOS (AVEC HABILITATIONS) ---
+  # --- JOB 2 : CONSTRUCTION POUR MACOS (CORRIGÉ ET ROBUSTE) ---
   build-macos:
     runs-on: macos-latest
     steps:
@@ -47,23 +47,21 @@ jobs:
         with:
           python-version: '3.10'
       - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
       - name: Install Tesseract OCR via Homebrew
         run: brew install tesseract tesseract-lang
       - name: Build macOS application
         run: |
-          # On trouve dynamiquement le chemin d'installation de Tesseract
-          TESSERACT_PATH=$(brew --prefix tesseract)
+          # On utilise --add-binary pour inclure l'exécutable Tesseract ET ses dépendances .dylib
+          TESSERACT_PREFIX=$(brew --prefix tesseract)
           pyinstaller --windowed --name sOCRate \
           --icon=assets/icon.icns \
-          --add-data "$TESSERACT_PATH:Tesseract-OCR" \
+          --add-binary "$TESSERACT_PREFIX/bin/tesseract:." \
+          --add-data "$TESSERACT_PREFIX/share/tessdata:tessdata" \
           --osx-entitlements-file entitlements.plist \
           socrate.py
       - name: Package macOS application
-        run: |
-          zip -r sOCRate-macOS.zip dist/sOCRate.app
+        run: zip -r sOCRate-macOS.zip dist/sOCRate.app
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:

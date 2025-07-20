@@ -54,25 +54,34 @@ COUNTER_RESET_OPTIONS = ["Jamais", "Chaque jour", "Chaque mois", "Chaque année"
 TESSDATA_DIR_CONFIG = '' # On initialise la variable
 if getattr(sys, 'frozen', False):
     # En mode compilé (.exe ou .app)
-    tesseract_path_base = os.path.join(sys._MEIPASS, 'Tesseract-OCR')
+    # Le chemin de base est le dossier où se trouve l'exécutable
+    if hasattr(sys, '_MEIPASS'):
+        base_path = sys._MEIPASS
+    else:
+        # Pour le .app sur macOS, les fichiers sont dans le dossier Contents/MacOS
+        base_path = os.path.dirname(sys.executable)
+
+    # Chemin vers l'exécutable tesseract
     tesseract_exe = 'tesseract.exe' if IS_WINDOWS else 'tesseract'
-    pytesseract.pytesseract.tesseract_cmd = os.path.join(tesseract_path_base, tesseract_exe)
+    tesseract_cmd_path = os.path.join(base_path, 'Tesseract-OCR', tesseract_exe)
     
-    # On construit la chaîne de configuration pour le dossier tessdata
-    tessdata_path = os.path.join(tesseract_path_base, "tessdata")
-    TESSDATA_DIR_CONFIG = f'--tessdata-dir "{tessdata_path}"'
+    # Chemin vers le dossier des langues
+    tessdata_path = os.path.join(base_path, 'Tesseract-OCR', 'tessdata')
+
+    # Application des chemins à la bibliothèque
+    pytesseract.pytesseract.tesseract_cmd = tesseract_cmd_path
+    os.environ['TESSDATA_PREFIX'] = tessdata_path
+
 else:
-    # En mode développement
+    # En mode développement (inchangé)
     if IS_WINDOWS:
-        tesseract_path_dev_win = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-        if os.path.exists(tesseract_path_dev_win):
-            pytesseract.pytesseract.tesseract_cmd = tesseract_path_dev_win
+        pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
     else: # macOS
-        tesseract_path_dev_mac = '/opt/homebrew/bin/tesseract'
-        if not os.path.exists(tesseract_path_dev_mac):
-            tesseract_path_dev_mac = '/usr/local/bin/tesseract'
-        if os.path.exists(tesseract_path_dev_mac):
-            pytesseract.pytesseract.tesseract_cmd = tesseract_path_dev_mac
+        tesseract_path_dev = '/opt/homebrew/bin/tesseract'
+        if not os.path.exists(tesseract_path_dev):
+            tesseract_path_dev = '/usr/local/bin/tesseract'
+        if os.path.exists(tesseract_path_dev):
+            pytesseract.pytesseract.tesseract_cmd = tesseract_path_dev
 
 # --- Fonctions utilitaires (inchangées) ---
 def load_state():
