@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+    Désactive le bac à sable strict. C'est la solution la plus simple pour les
+    applications qui ont besoin d'accéder à des fichiers et des commandes externes.
+    -->
+    <key>com.apple.security.app-sandbox</key>
+    <false/>
+
+    <!--
+    C'EST LA PERMISSION LA PLUS IMPORTANTE :
+    Autorise explicitement l'application à lire et écrire dans les fichiers et dossiers
+    que l'utilisateur a sélectionnés via une boîte de dialogue "Ouvrir" ou "Enregistrer".
+    -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+</dict>
+</plist>
