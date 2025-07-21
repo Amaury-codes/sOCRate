@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  # --- JOB 1 : CONSTRUCTION POUR WINDOWS ---
+  # --- JOB 1 : CONSTRUCTION POUR WINDOWS (INCHANGÉ ET CORRECT) ---
   build-windows:
     runs-on: windows-latest
     steps:
@@ -19,7 +19,9 @@ jobs:
         with:
           python-version: '3.10'
       - name: Install Python dependencies
-        run: pip install -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
       - name: Install Tesseract OCR
         run: choco install tesseract-ocr --params='"/l fra,eng,por"' -y
       - name: Build Windows executable
@@ -51,23 +53,40 @@ jobs:
 
       - name: Build macOS application
         run: |
-          # On trouve le chemin d'installation de Tesseract
           TESSERACT_PREFIX=$(brew --prefix tesseract)
-          
-          # On compile l'application. On copie le dossier Tesseract ENTIER via --add-data.
-          # C'est la méthode la plus fiable pour que tous les fichiers (binaires, libs, data) soient ensemble.
           pyinstaller --windowed --name sOCRate \
           --icon=assets/icon.icns \
           --add-data "$TESSERACT_PREFIX:Tesseract-OCR" \
           --osx-entitlements-file entitlements.plist \
           socrate.py
 
-      # --- ÉTAPE CRUCIALE POUR CORRIGER LES PERMISSIONS ---
-      - name: Fix Tesseract permissions after bundling
+      # --- ÉTAPE FINALE ET CRUCIALE : CORRECTION DES CHEMINS DES BIBLIOTHÈQUES ---
+      - name: Fix Tesseract dynamic library paths
         run: |
-          # On donne explicitement la permission d'exécution au binaire Tesseract
-          # qui a été copié à l'intérieur de l'application.
-          chmod +x dist/sOCRate.app/Contents/Resources/Tesseract-OCR/bin/tesseract
+          # Définit le chemin où se trouvent les binaires et bibliothèques dans le .app
+          APP_RESOURCES="dist/sOCRate.app/Contents/Resources/Tesseract-OCR"
+          TESS_BIN="$APP_RESOURCES/bin/tesseract"
+          TESS_LIBS_DIR="$APP_RESOURCES/lib"
+          
+          # 1. Donne la permission d'exécution
+          chmod +x "$TESS_BIN"
+          
+          # 2. Boucle sur toutes les bibliothèques (.dylib) et réécrit leurs chemins
+          for lib in $(find "$TESS_LIBS_DIR" -name '*.dylib'); do
+              echo "Processing library: $lib"
+              # a) Change l'ID de la bibliothèque pour qu'il soit relatif
+              install_name_tool -id "@rpath/$(basename "$lib")" "$lib"
+              # b) Change les références aux AUTRES bibliothèques Tesseract pour qu'elles soient relatives
+              for deplib in $(otool -L "$lib" | grep '/opt/homebrew' | awk '{print $1}'); do
+                  install_name_tool -change "$deplib" "@rpath/$(basename "$deplib")" "$lib"
+              done
+          done
+
+          # 3. Réécrit les chemins dans l'exécutable tesseract principal
+          echo "Processing main executable: $TESS_BIN"
+          for deplib in $(otool -L "$TESS_BIN" | grep '/opt/homebrew' | awk '{print $1}'); do
+              install_name_tool -change "$deplib" "@rpath/$(basename "$deplib")" "$TESS_BIN"
+          done
 
       - name: Package macOS application
         run: zip -r sOCRate-macOS.zip dist/sOCRate.app
