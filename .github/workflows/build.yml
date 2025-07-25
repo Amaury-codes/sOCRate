@@ -53,19 +53,21 @@ jobs:
         run: brew install tesseract tesseract-lang
       - name: Build macOS application
         run: |
-          # CORRECTION CLÉ :
-          # Au lieu de copier des fichiers séparés, on copie le dossier Tesseract entier.
-          # `brew --prefix tesseract` trouve le dossier d'installation (ex: /opt/homebrew/opt/tesseract).
-          # On copie ce dossier DANS l'application, sous le nom "Tesseract-OCR".
-          # C'est simple, fiable, et ça inclut l'exécutable, les libs, et les données de langue.
+          # Étape 1 : Construire l'application
           pyinstaller --windowed --name sOCRate \
           --icon=assets/icon.icns \
           --add-data "$(brew --prefix tesseract):Frameworks/Tesseract-OCR" \
           --osx-entitlements-file entitlements.plist \
           socrate.py
-      - name: Package macOS application
-        # Il est plus standard de créer un .dmg pour la distribution, mais un .zip fonctionne aussi.
-        run: hdiutil create dist/sOCRate.dmg -volname "sOCRate" -srcfolder dist/sOCRate.app
+          
+          # Étape 2 : PAUSE DE SÉCURITÉ
+          # On attend 5 secondes pour s'assurer que le système a libéré tous les fichiers de l'application.
+          echo "Waiting for 5 seconds to release file locks..."
+          sleep 5
+          
+          # Étape 3 : Empaqueter dans un .dmg
+          echo "Packaging into .dmg..."
+          hdiutil create dist/sOCRate.dmg -volname "sOCRate" -srcfolder dist/sOCRate.app
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
