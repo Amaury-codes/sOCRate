@@ -45,52 +45,55 @@ LOG_FILE = os.path.join(LOG_DIR, "app.log")
 
 LANG_MAP = {"Français": "fra", "English": "eng", "Português": "por"}
 SOURCE_ACTION_OPTIONS = ["Conserver l'original", "Déplacer l'original", "Écraser l'original"]
-OUTPUT_DEST_OPTIONS = ["Dans un sous-dossier 'Traités_OCR'", "Dans le même dossier que l'original", "Dans un dossier spécifique"]
+OUTPUT_DEST_OPTIONS = ["Dans un sous-ddessier 'Traités_OCR'", "Dans le même dossier que l'original", "Dans un dossier spécifique"]
 FILE_RENAME_TOKENS = ["[NOM_ORIGINAL]", "[DATE]", "[HEURE]", "[COMPTEUR]", "[POIDS_FICHIER]", "[NOMBRE_PAGES]"]
 FOLDER_RENAME_TOKENS = ["[NOM_UTILISATEUR]", "[NOM_ORDINATEUR]", "[DATE]"]
 COUNTER_RESET_OPTIONS = ["Jamais", "Chaque jour", "Chaque mois", "Chaque année"]
 
-# --- Logique Tesseract (Version Finale, Robuste et Multiplateforme) ---
+# --- Logique Tesseract (Version Finale, Robuste et Synchronisée avec le Build) ---
+import sys
+import os
+import pytesseract # Assurez-vous que l'import est bien en haut du fichier.
+
+TESSDATA_DIR_CONFIG = '' # Initialisation pour le mode développement.
+IS_WINDOWS = sys.platform == "win32"
+
 if getattr(sys, 'frozen', False):
-    # --- SCÉNARIO A : APPLICATION COMPILÉE (.exe ou .app) ---
-    # Détermine le chemin de base où l'application est décompressée
+    # --- Mode compilé (.exe ou .app) ---
+    # Le script de build place Tesseract dans un dossier "Tesseract-OCR" à l'intérieur de l'application.
     if hasattr(sys, '_MEIPASS'):
+        # Pour une app --onefile (Windows), les données sont dans un dossier temporaire.
         base_path = sys._MEIPASS
     else:
-        # Cas d'un .app sur macOS
-        base_path = os.path.join(os.path.dirname(sys.executable), '..', 'Resources')
+        # Pour une app --onedir (macOS .app), les données sont dans le dossier Resources.
+        base_path = os.path.abspath(os.path.join(os.path.dirname(sys.executable), '..', 'Resources'))
 
-    # Construit le chemin vers le dossier Tesseract embarqué
-    tesseract_path_base = os.path.join(base_path, 'Tesseract-OCR')
+    # On construit le chemin vers le dossier Tesseract embarqué.
+    tesseract_root_path = os.path.join(base_path, 'Tesseract-OCR')
+
+    # On définit les chemins pour l'exécutable et les données de langue.
+    # Pour macOS (build Homebrew), l'exécutable est dans 'bin' et les données dans 'share/tessdata'.
+    # Pour Windows (installateur officiel), tout est à la racine.
+    tesseract_exe = 'tesseract.exe' if IS_WINDOWS else os.path.join('bin', 'tesseract')
+    tesseract_cmd_path = os.path.join(tesseract_root_path, tesseract_exe)
+    tessdata_path = os.path.join(tesseract_root_path, 'share', 'tessdata') if not IS_WINDOWS else os.path.join(tesseract_root_path, 'tessdata')
     
-    # 1. Définit le chemin vers l'exécutable Tesseract
-    tesseract_exe_name = 'tesseract.exe' if IS_WINDOWS else os.path.join('bin', 'tesseract')
-    tesseract_cmd_path = os.path.join(tesseract_path_base, tesseract_exe_name)
+    # On applique les chemins à la bibliothèque pytesseract.
     pytesseract.pytesseract.tesseract_cmd = tesseract_cmd_path
+    TESSDATA_DIR_CONFIG = f'--tessdata-dir "{tessdata_path}"'
 
-    # 2. Définit le chemin vers les données de langue (TRES IMPORTANT)
-    # Sur Windows, le dossier 'tessdata' est à la racine de Tesseract-OCR
-    # Sur macOS (via Homebrew), il est dans 'share/tessdata'
-    tessdata_subpath = 'tessdata' if IS_WINDOWS else os.path.join('share', 'tessdata')
-    tessdata_path = os.path.join(tesseract_path_base, tessdata_subpath)
-    os.environ['TESSDATA_PREFIX'] = tessdata_path
 else:
-    # --- SCÉNARIO B : ENVIRONNEMENT DE DÉVELOPPEMENT ---
-    # Le script est lancé avec "python socrate.py"
+    # --- Mode développement (le code s'exécute depuis le terminal) ---
     if IS_WINDOWS:
-        # Chemin d'installation standard de Tesseract sur Windows
-        tesseract_path_dev_win = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-        if os.path.exists(tesseract_path_dev_win):
-            pytesseract.pytesseract.tesseract_cmd = tesseract_path_dev_win
-    else: # macOS
-        # Chemin d'installation standard via Homebrew
-        tesseract_path_dev_mac = '/opt/homebrew/bin/tesseract'
-        if not os.path.exists(tesseract_path_dev_mac):
-            tesseract_path_dev_mac = '/usr/local/bin/tesseract' # Pour les Mac Intel plus anciens
-        if os.path.exists(tesseract_path_dev_mac):
-            pytesseract.pytesseract.tesseract_cmd = tesseract_path_dev_mac
+        pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+    else: # macOS / Linux
+        tesseract_path_dev = '/opt/homebrew/bin/tesseract' # Chemin pour Apple Silicon
+        if not os.path.exists(tesseract_path_dev):
+            tesseract_path_dev = '/usr/local/bin/tesseract' # Chemin pour Intel
+        if os.path.exists(tesseract_path_dev):
+            pytesseract.pytesseract.tesseract_cmd = tesseract_path_dev
 
-# --- Fonctions utilitaires ---
+# --- Fonctions utilitaires (inchangées) ---
 def load_state():
     if os.path.exists(STATE_FILE):
         try:
@@ -225,7 +228,8 @@ class OCRWatcher(threading.Thread):
                     img.save(img_buffer, format='JPEG', quality=85)
                     img_buffer.seek(0)
                     compressed_img_object = Image.open(img_buffer)
-                    pdf_page_with_ocr_bytes = pytesseract.image_to_pdf_or_hocr(compressed_img_object, lang=LANG_MAP[config['lang']], extension='pdf')
+                    # --- MODIFICATION FINALE ICI ---
+                    pdf_page_with_ocr_bytes = pytesseract.image_to_pdf_or_hocr(compressed_img_object, lang=LANG_MAP[config['lang']], extension='pdf', config=TESSDATA_DIR_CONFIG)
                     pdf_stream = io.BytesIO(pdf_page_with_ocr_bytes)
                     merger.append(pdf_stream)
                 temp_output_path = output_path + ".tmp"
@@ -233,19 +237,18 @@ class OCRWatcher(threading.Thread):
 
             source_action = config.get("source_action", "Conserver l'original")
             if source_action == "Écraser l'original":
-                os.remove(pdf_path)
-                self.log(f"Original '{filename}' supprimé pour être écrasé.")
+                final_path = os.path.join(base_folder, new_filename)
+                shutil.move(temp_output_path, final_path)
+                if pdf_path != final_path: os.remove(pdf_path)
+                self.log(f"'{filename}' écrasé par la version OCRisée '{new_filename}'.")
             elif source_action == "Déplacer l'original":
                 archive_folder = build_dynamic_path(config.get("archive_path_pattern"))
-                os.makedirs(archive_folder, exist_ok=True)
-                archive_path = os.path.join(archive_folder, filename)
-                shutil.move(pdf_path, archive_path)
-                self.log(f"Original déplacé vers '{archive_folder}'.")
-            else:
-                 self.log(f"Original '{filename}' conservé.")
-            shutil.move(temp_output_path, output_path)
-            self.log(f"Fichier traité et sauvegardé : '{output_path}'.")
-
+                os.makedirs(archive_folder, exist_ok=True); archive_path = os.path.join(archive_folder, filename)
+                shutil.move(pdf_path, archive_path); shutil.move(temp_output_path, output_path)
+                self.log(f"'{filename}' traité. Original déplacé vers '{archive_folder}', OCR sauvé dans '{output_folder}'.")
+            elif source_action == "Conserver l'original":
+                shutil.move(temp_output_path, output_path)
+                self.log(f"'{filename}' traité. Original conservé, OCR sauvé dans '{output_folder}'.")
         except Exception as e: self.log(f"Erreur critique sur '{filename}': {e}", "error")
 
     class PDFHandler(FileSystemEventHandler):
@@ -274,7 +277,6 @@ class FolderSettingsDialog(ctk.CTkToplevel):
     def create_widgets(self, config):
         config = config or {}
         self.grid_columnconfigure(0, weight=1); self.grid_rowconfigure(3, weight=1)
-
         ctk.CTkLabel(self, text="Dossier à surveiller :", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=20, pady=(20, 5), sticky="w")
         path_frame = ctk.CTkFrame(self, fg_color="transparent"); path_frame.grid(row=1, column=0, padx=20, sticky="ew")
         self.path_entry = ctk.CTkEntry(path_frame); self.path_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
