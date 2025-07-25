@@ -50,46 +50,41 @@ FILE_RENAME_TOKENS = ["[NOM_ORIGINAL]", "[DATE]", "[HEURE]", "[COMPTEUR]", "[POI
 FOLDER_RENAME_TOKENS = ["[NOM_UTILISATEUR]", "[NOM_ORDINATEUR]", "[DATE]"]
 COUNTER_RESET_OPTIONS = ["Jamais", "Chaque jour", "Chaque mois", "Chaque année"]
 
-# --- Logique Tesseract (Version Finale, Robuste et Synchronisée avec le Build) ---
+# --- Logique Tesseract (Version Finale, Corrigée pour le chemin Frameworks) ---
 import sys
 import os
-import pytesseract # Assurez-vous que l'import est bien en haut du fichier.
+import pytesseract
 
-TESSDATA_DIR_CONFIG = '' # Initialisation pour le mode développement.
+TESSDATA_DIR_CONFIG = ''
 IS_WINDOWS = sys.platform == "win32"
 
 if getattr(sys, 'frozen', False):
-    # --- Mode compilé (.exe ou .app) ---
-    # Le script de build place Tesseract dans un dossier "Tesseract-OCR" à l'intérieur de l'application.
+    # --- Mode compilé ---
     if hasattr(sys, '_MEIPASS'):
-        # Pour une app --onefile (Windows), les données sont dans un dossier temporaire.
         base_path = sys._MEIPASS
     else:
-        # Pour une app --onedir (macOS .app), les données sont dans le dossier Resources.
-        base_path = os.path.abspath(os.path.join(os.path.dirname(sys.executable), '..', 'Resources'))
+        # MODIFICATION DÉFINITIVE : On cherche dans Frameworks, pas dans Resources.
+        base_path = os.path.abspath(os.path.join(os.path.dirname(sys.executable), '..', 'Frameworks'))
 
-    # On construit le chemin vers le dossier Tesseract embarqué.
     tesseract_root_path = os.path.join(base_path, 'Tesseract-OCR')
 
-    # On définit les chemins pour l'exécutable et les données de langue.
-    # Pour macOS (build Homebrew), l'exécutable est dans 'bin' et les données dans 'share/tessdata'.
-    # Pour Windows (installateur officiel), tout est à la racine.
     tesseract_exe = 'tesseract.exe' if IS_WINDOWS else os.path.join('bin', 'tesseract')
     tesseract_cmd_path = os.path.join(tesseract_root_path, tesseract_exe)
     tessdata_path = os.path.join(tesseract_root_path, 'share', 'tessdata') if not IS_WINDOWS else os.path.join(tesseract_root_path, 'tessdata')
-    
-    # On applique les chemins à la bibliothèque pytesseract.
+
     pytesseract.pytesseract.tesseract_cmd = tesseract_cmd_path
+    
+    os.environ['TESSDATA_PREFIX'] = tessdata_path
     TESSDATA_DIR_CONFIG = f'--tessdata-dir "{tessdata_path}"'
 
 else:
-    # --- Mode développement (le code s'exécute depuis le terminal) ---
+    # --- Mode développement ---
     if IS_WINDOWS:
         pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
     else: # macOS / Linux
-        tesseract_path_dev = '/opt/homebrew/bin/tesseract' # Chemin pour Apple Silicon
+        tesseract_path_dev = '/opt/homebrew/bin/tesseract'
         if not os.path.exists(tesseract_path_dev):
-            tesseract_path_dev = '/usr/local/bin/tesseract' # Chemin pour Intel
+            tesseract_path_dev = '/usr/local/bin/tesseract'
         if os.path.exists(tesseract_path_dev):
             pytesseract.pytesseract.tesseract_cmd = tesseract_path_dev
 

@@ -60,7 +60,7 @@ jobs:
           # C'est simple, fiable, et ça inclut l'exécutable, les libs, et les données de langue.
           pyinstaller --windowed --name sOCRate \
           --icon=assets/icon.icns \
-          --add-data "$(brew --prefix tesseract):Tesseract-OCR" \
+          --add-data "$(brew --prefix tesseract):Frameworks/Tesseract-OCR" \
           --osx-entitlements-file entitlements.plist \
           socrate.py
       - name: Package macOS application
