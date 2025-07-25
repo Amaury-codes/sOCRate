@@ -69,7 +69,7 @@ jobs:
           echo "Waiting for 5 seconds to release file locks..."
           sleep 5
           
-          # Étape 4 : Empaqueter dans un .dmg
+          # Étape 4 : Empaqueter dans un .dmg (version finale)
           echo "Packaging into .dmg..."
           hdiutil create dist/sOCRate.dmg -volname "sOCRate" -srcfolder dist/sOCRate.app
 
