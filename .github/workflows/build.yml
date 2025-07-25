@@ -36,7 +36,7 @@ jobs:
           name: sOCRate-Windows-Executable
           path: dist/sOCRate.exe
 
-  # --- JOB 2 : CONSTRUCTION POUR MACOS (CORRIGÉ ET ROBUSTE) ---
+  # --- JOB 2 : CONSTRUCTION POUR MACOS (AVEC FIX DES PERMISSIONS) ---
   build-macos:
     runs-on: macos-latest
     steps:
@@ -49,9 +49,9 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
       - name: Install Tesseract OCR via Homebrew
-        # Installe tesseract ET les paquets de langues
         run: brew install tesseract tesseract-lang
-      - name: Build macOS application
+
+      - name: Build and Package macOS application
         run: |
           # Étape 1 : Construire l'application
           pyinstaller --windowed --name sOCRate \
@@ -60,14 +60,19 @@ jobs:
           --osx-entitlements-file entitlements.plist \
           socrate.py
           
-          # Étape 2 : PAUSE DE SÉCURITÉ
-          # On attend 5 secondes pour s'assurer que le système a libéré tous les fichiers de l'application.
+          # Étape 2 : CORRECTION FINALE DES PERMISSIONS
+          # On donne explicitement la permission d'exécution à l'exécutable Tesseract.
+          echo "Setting execute permissions on Tesseract binary..."
+          chmod +x "dist/sOCRate.app/Contents/Frameworks/Tesseract-OCR/bin/tesseract"
+
+          # Étape 3 : Pause de sécurité
           echo "Waiting for 5 seconds to release file locks..."
           sleep 5
           
-          # Étape 3 : Empaqueter dans un .dmg
+          # Étape 4 : Empaqueter dans un .dmg
           echo "Packaging into .dmg..."
           hdiutil create dist/sOCRate.dmg -volname "sOCRate" -srcfolder dist/sOCRate.app
+
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
