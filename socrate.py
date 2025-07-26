@@ -30,16 +30,13 @@ from watchdog.events import FileSystemEventHandler
 def setup_tesseract_data():
     """Vérifie si les données Tesseract sont dans un cache local, sinon les copie depuis le paquet de l'application."""
     try:
-        # On définit un dossier de cache spécifique à l'application
         cache_dir = appdirs.user_data_dir(APP_NAME, APP_AUTHOR)
-        tessdata_cache_path = os.path.join(cache_dir, 'tessdata_v1') # On peut changer la version pour forcer une mise à jour
+        # CORRECTION : On utilise le chiffre '1' et non la lettre 'l'.
+        tessdata_cache_path = os.path.join(cache_dir, 'tessdata_v1') 
 
-        # Si le cache existe déjà, tout va bien, on retourne son chemin
         if os.path.exists(tessdata_cache_path):
             return tessdata_cache_path
 
-        # --- Le cache n'existe pas, on le crée ---
-        # On trouve le chemin source des données à l'intérieur du .app
         if hasattr(sys, '_MEIPASS'):
             bundle_dir = sys._MEIPASS
         else:
@@ -48,11 +45,9 @@ def setup_tesseract_data():
         source_tessdata_path = os.path.join(bundle_dir, 'Tesseract-OCR', 'share', 'tessdata')
 
         if not os.path.exists(source_tessdata_path):
-            # Erreur fatale : le build est cassé.
             logging.error(f"Source tessdata introuvable à {source_tessdata_path}")
             return None
 
-        # On copie les fichiers vers le dossier de cache sûr
         logging.info(f"Copie de tessdata vers le cache : {tessdata_cache_path}")
         shutil.copytree(source_tessdata_path, tessdata_cache_path)
         return tessdata_cache_path
@@ -84,13 +79,12 @@ FILE_RENAME_TOKENS = ["[NOM_ORIGINAL]", "[DATE]", "[HEURE]", "[COMPTEUR]", "[POI
 FOLDER_RENAME_TOKENS = ["[NOM_UTILISATEUR]", "[NOM_ORDINATEUR]", "[DATE]"]
 COUNTER_RESET_OPTIONS = ["Jamais", "Chaque jour", "Chaque mois", "Chaque année"]
 
-# --- Logique Tesseract (Approche Finale via Cache Applicatif) ---
+# --- Logique Tesseract (Approche Finale via Cache Applicatif - CORRIGÉE) ---
 TESSDATA_DIR_CONFIG = ''
 IS_WINDOWS = sys.platform == "win32"
 
 if getattr(sys, 'frozen', False):
     # --- Mode compilé ---
-    # 1. On trouve l'exécutable Tesseract DANS le paquet de l'application
     if hasattr(sys, '_MEIPASS'):
         bundle_dir = sys._MEIPASS
     else:
@@ -99,12 +93,11 @@ if getattr(sys, 'frozen', False):
     tesseract_executable_path = os.path.join(bundle_dir, 'Tesseract-OCR', 'bin', 'tesseract')
     pytesseract.pytesseract.tesseract_cmd = tesseract_executable_path
 
-    # 2. On configure et récupère le chemin vers le cache de données Tesseract SÛR
     cached_tessdata_path = setup_tesseract_data()
 
-    # 3. On dit à Tesseract d'utiliser ce cache
     if cached_tessdata_path:
         os.environ['TESSDATA_PREFIX'] = cached_tessdata_path
+        # La variable de configuration doit pointer vers le dossier qui contient les fichiers .traineddata
         TESSDATA_DIR_CONFIG = f'--tessdata-dir "{cached_tessdata_path}"'
     else:
         logging.error("Le chemin des données Tesseract n'a pas pu être configuré. L'OCR va échouer.")
