@@ -463,7 +463,7 @@ class App(ctk.CTk):
                 self.log_textbox.configure(state="normal"); self.log_textbox.insert("end", f"[{time.strftime('%H:%M:%S')}] {record}\n")
                 self.log_textbox.configure(state="disabled"); self.log_textbox.see("end")
         except queue.Empty: pass
-        finally: self.after(100, self.process_log_queue)
+        finally: self.after(500, self.process_log_queue)
 
     def log(self, msg, level="info"): logging.info(msg) if level == "info" else logging.error(msg)
     def load_config(self):
