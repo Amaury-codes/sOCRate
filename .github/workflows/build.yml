@@ -36,7 +36,7 @@ jobs:
           name: sOCRate-Windows-Executable
           path: dist/sOCRate.exe
 
-  # --- JOB 2 : CONSTRUCTION POUR MACOS (Version Finale Corrigée) ---
+  # --- JOB 2 : CONSTRUCTION POUR MACOS (Approche Finale et Robuste) ---
   build-macos:
     runs-on: macos-latest
     steps:
@@ -53,23 +53,22 @@ jobs:
 
       - name: Build and Package macOS application
         run: |
-          # Étape 1 : Construire l'application
+          # Étape 1 : On place Tesseract dans un dossier simple à la racine de Resources
           pyinstaller --windowed --name sOCRate \
           --icon=assets/icon.icns \
-          --add-data "$(brew --prefix tesseract):Frameworks/Tesseract-OCR" \
+          --add-data "$(brew --prefix tesseract):Tesseract-OCR" \
           --osx-entitlements-file entitlements.plist \
           socrate.py
           
-          # Étape 2 : CORRECTION FINALE DES PERMISSIONS
-          # On ajoute le /Frameworks manquant dans le chemin, révélé par notre débogage.
+          # Étape 2 : On ajoute les permissions d'exécution
           echo "Setting execute permissions on Tesseract binary..."
-          chmod +x "dist/sOCRate.app/Contents/Frameworks/Frameworks/Tesseract-OCR/bin/tesseract"
+          chmod +x "dist/sOCRate.app/Contents/Resources/Tesseract-OCR/bin/tesseract"
 
           # Étape 3 : Pause de sécurité
-          echo "Waiting for 5 seconds to release file locks..."
+          echo "Waiting for 5 seconds..."
           sleep 5
           
-          # Étape 4 : Empaqueter dans un .dmg
+          # Étape 4 : Empaquetage
           echo "Packaging into .dmg..."
           hdiutil create dist/sOCRate.dmg -volname "sOCRate" -srcfolder dist/sOCRate.app
 
