@@ -50,7 +50,7 @@ FILE_RENAME_TOKENS = ["[NOM_ORIGINAL]", "[DATE]", "[HEURE]", "[COMPTEUR]", "[POI
 FOLDER_RENAME_TOKENS = ["[NOM_UTILISATEUR]", "[NOM_ORDINATEUR]", "[DATE]"]
 COUNTER_RESET_OPTIONS = ["Jamais", "Chaque jour", "Chaque mois", "Chaque année"]
 
-# --- Logique Tesseract (Version Finale Corrigée pour le chemin Frameworks/Frameworks) ---
+# --- Logique Tesseract (Version Définitivement Corrigée) ---
 import sys
 import os
 import pytesseract
@@ -70,7 +70,10 @@ if getattr(sys, 'frozen', False):
     tesseract_root_path = os.path.join(base_path, 'Frameworks', 'Tesseract-OCR')
 
     tesseract_exe = 'tesseract.exe' if IS_WINDOWS else os.path.join('bin', 'tesseract')
-    tesseract_cmd__path = os.path.join(tesseract_root_path, tesseract_exe)
+    
+    # CORRECTION : Le nom de la variable a été corrigé (un seul underscore)
+    tesseract_cmd_path = os.path.join(tesseract_root_path, tesseract_exe)
+    
     tessdata_path = os.path.join(tesseract_root_path, 'share', 'tessdata') if not IS_WINDOWS else os.path.join(tesseract_root_path, 'tessdata')
 
     pytesseract.pytesseract.tesseract_cmd = tesseract_cmd_path
