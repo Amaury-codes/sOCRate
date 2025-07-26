@@ -50,7 +50,7 @@ FILE_RENAME_TOKENS = ["[NOM_ORIGINAL]", "[DATE]", "[HEURE]", "[COMPTEUR]", "[POI
 FOLDER_RENAME_TOKENS = ["[NOM_UTILISATEUR]", "[NOM_ORDINATEUR]", "[DATE]"]
 COUNTER_RESET_OPTIONS = ["Jamais", "Chaque jour", "Chaque mois", "Chaque année"]
 
-# --- Logique Tesseract (Version Finale, Corrigée pour le chemin Frameworks) ---
+# --- Logique Tesseract (Version Finale Corrigée pour le chemin Frameworks/Frameworks) ---
 import sys
 import os
 import pytesseract
@@ -63,13 +63,14 @@ if getattr(sys, 'frozen', False):
     if hasattr(sys, '_MEIPASS'):
         base_path = sys._MEIPASS
     else:
-        # MODIFICATION DÉFINITIVE : On cherche dans Frameworks, pas dans Resources.
+        # On navigue jusqu'au premier dossier Frameworks.
         base_path = os.path.abspath(os.path.join(os.path.dirname(sys.executable), '..', 'Frameworks'))
 
-    tesseract_root_path = os.path.join(base_path, 'Tesseract-OCR')
+    # On construit le chemin en ajoutant le DEUXIÈME dossier Frameworks.
+    tesseract_root_path = os.path.join(base_path, 'Frameworks', 'Tesseract-OCR')
 
     tesseract_exe = 'tesseract.exe' if IS_WINDOWS else os.path.join('bin', 'tesseract')
-    tesseract_cmd_path = os.path.join(tesseract_root_path, tesseract_exe)
+    tesseract_cmd__path = os.path.join(tesseract_root_path, tesseract_exe)
     tessdata_path = os.path.join(tesseract_root_path, 'share', 'tessdata') if not IS_WINDOWS else os.path.join(tesseract_root_path, 'tessdata')
 
     pytesseract.pytesseract.tesseract_cmd = tesseract_cmd_path
@@ -78,7 +79,7 @@ if getattr(sys, 'frozen', False):
     TESSDATA_DIR_CONFIG = f'--tessdata-dir "{tessdata_path}"'
 
 else:
-    # --- Mode développement ---
+    # --- Mode développement (inchangé) ---
     if IS_WINDOWS:
         pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
     else: # macOS / Linux

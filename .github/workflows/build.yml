@@ -36,7 +36,7 @@ jobs:
           name: sOCRate-Windows-Executable
           path: dist/sOCRate.exe
 
-  # --- JOB 2 : CONSTRUCTION POUR MACOS (AVEC FIX DES PERMISSIONS) ---
+  # --- JOB 2 : CONSTRUCTION POUR MACOS (Version Finale Corrigée) ---
   build-macos:
     runs-on: macos-latest
     steps:
@@ -51,7 +51,6 @@ jobs:
       - name: Install Tesseract OCR via Homebrew
         run: brew install tesseract tesseract-lang
 
-      # --- ÉTAPE DE DÉBOGAGE : On regarde ce que PyInstaller a VRAIMENT fait ---
       - name: Build and Package macOS application
         run: |
           # Étape 1 : Construire l'application
@@ -61,25 +60,19 @@ jobs:
           --osx-entitlements-file entitlements.plist \
           socrate.py
           
-          # --- DÉBUT DU BLOC DE DÉBOGAGE ---
-          # On demande au serveur de nous montrer la liste complète de tous les fichiers créés
-          echo "================================================="
-          echo "DEBUG: Listing contents of the 'dist' directory..."
-          ls -R dist
-          echo "================================================="
-          # --- FIN DU BLOC DE DÉBOGAGE ---
-
-          # Étape 2 : CORRECTION DES PERMISSIONS (cette ligne va probablement encore échouer, c'est OK)
+          # Étape 2 : CORRECTION FINALE DES PERMISSIONS
+          # On ajoute le /Frameworks manquant dans le chemin, révélé par notre débogage.
           echo "Setting execute permissions on Tesseract binary..."
-          chmod +x "dist/sOCRate.app/Contents/Frameworks/Tesseract-OCR/bin/tesseract"
+          chmod +x "dist/sOCRate.app/Contents/Frameworks/Frameworks/Tesseract-OCR/bin/tesseract"
 
-          # Étapes suivantes...
-          echo "Waiting for 5 seconds..."
+          # Étape 3 : Pause de sécurité
+          echo "Waiting for 5 seconds to release file locks..."
           sleep 5
+          
+          # Étape 4 : Empaqueter dans un .dmg
           echo "Packaging into .dmg..."
           hdiutil create dist/sOCRate.dmg -volname "sOCRate" -srcfolder dist/sOCRate.app
-          
-      # On rajoute l'étape d'upload qui avait disparu
+
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
