@@ -36,7 +36,7 @@ jobs:
           name: sOCRate-Windows-Executable
           path: dist/sOCRate.exe
 
-  # --- JOB 2 : CONSTRUCTION POUR MACOS (Approche Finale et Robuste) ---
+  # --- JOB 2 : CONSTRUCTION POUR MACOS (SOLUTION FINALE AVEC TOUTES LES LANGUES) ---
   build-macos:
     runs-on: macos-latest
     steps:
@@ -49,27 +49,32 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
       - name: Install Tesseract OCR via Homebrew
-        run: brew install tesseract tesseract-lang
+        run: brew install tesseract # On n'a pas besoin de tesseract-lang
+
+      # NOUVELLE ÉTAPE CRUCIALE : On télécharge manuellement les langues nécessaires
+      - name: Download Tesseract Languages
+        run: |
+          TESSDATA_PATH=$(brew --prefix tesseract)/share/tessdata
+          echo "Downloading language files to $TESSDATA_PATH"
+          curl -L -o "$TESSDATA_PATH/fra.traineddata" "https://github.com/tesseract-ocr/tessdata_fast/raw/main/fra.traineddata"
+          curl -L -o "$TESSDATA_PATH/por.traineddata" "https://github.com/tesseract-ocr/tessdata_fast/raw/main/por.traineddata"
+          curl -L -o "$TESSDATA_PATH/eng.traineddata" "https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata"
+          echo "Vérification des fichiers de langue téléchargés :"
+          ls -l "$TESSDATA_PATH"
 
       - name: Build and Package macOS application
         run: |
-          # Étape 1 : On place Tesseract dans un dossier simple à la racine de Resources
+          # Cette section ne change plus, elle est correcte
           pyinstaller --windowed --name sOCRate \
           --icon=assets/icon.icns \
           --add-data "$(brew --prefix tesseract):Tesseract-OCR" \
           --osx-entitlements-file entitlements.plist \
           socrate.py
           
-          # Étape 2 : On ajoute les permissions d'exécution
-          echo "Setting execute permissions on Tesseract binary..."
           chmod +x "dist/sOCRate.app/Contents/Resources/Tesseract-OCR/bin/tesseract"
-
-          # Étape 3 : Pause de sécurité
-          echo "Waiting for 5 seconds..."
+          
           sleep 5
           
-          # Étape 4 : Empaquetage
-          echo "Packaging into .dmg..."
           hdiutil create dist/sOCRate.dmg -volname "sOCRate" -srcfolder dist/sOCRate.app
 
       - name: Upload macOS artifact
