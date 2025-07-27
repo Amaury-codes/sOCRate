@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  # --- JOB 1 : CONSTRUCTION POUR WINDOWS (INCHANGÉ ET CORRECT) ---
+  # --- JOB 1 : CONSTRUCTION POUR WINDOWS ---
   build-windows:
     runs-on: windows-latest
     steps:
@@ -36,7 +36,7 @@ jobs:
           name: sOCRate-Windows-Executable
           path: dist/sOCRate.exe
 
-  # --- JOB 2 : CONSTRUCTION POUR MACOS (SOLUTION FINALE AVEC TOUTES LES LANGUES) ---
+  # --- JOB 2 : CONSTRUCTION POUR MACOS (VERSION CORRIGÉE) ---
   build-macos:
     runs-on: macos-latest
     steps:
@@ -47,34 +47,42 @@ jobs:
         with:
           python-version: '3.10'
       - name: Install Python dependencies
-        run: pip install -r requirements.txt
-      - name: Install Tesseract OCR via Homebrew
-        run: brew install tesseract # On n'a pas besoin de tesseract-lang
-
-      # NOUVELLE ÉTAPE CRUCIALE : On télécharge manuellement les langues nécessaires
-      - name: Download Tesseract Languages
         run: |
-          TESSDATA_PATH=$(brew --prefix tesseract)/share/tessdata
-          echo "Downloading language files to $TESSDATA_PATH"
-          curl -L -o "$TESSDATA_PATH/fra.traineddata" "https://github.com/tesseract-ocr/tessdata_fast/raw/main/fra.traineddata"
-          curl -L -o "$TESSDATA_PATH/por.traineddata" "https://github.com/tesseract-ocr/tessdata_fast/raw/main/por.traineddata"
-          curl -L -o "$TESSDATA_PATH/eng.traineddata" "https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata"
-          echo "Vérification des fichiers de langue téléchargés :"
-          ls -l "$TESSDATA_PATH"
+          pip install -r requirements.txt
+          pip install pyobjc-core pyobjc
+      - name: Install Tesseract OCR and dependencies
+        run: |
+          brew install tesseract leptonica
+          
+          # Créer le dossier tessdata dans le bundle
+          mkdir -p Tesseract-OCR/share/tessdata
+          
+          # Télécharger les langues directement dans le bundle
+          curl -L -o Tesseract-OCR/share/tessdata/eng.traineddata https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata
+          curl -L -o Tesseract-OCR/share/tessdata/fra.traineddata https://github.com/tesseract-ocr/tessdata_fast/raw/main/fra.traineddata
+          curl -L -o Tesseract-OCR/share/tessdata/por.traineddata https://github.com/tesseract-ocr/tessdata_fast/raw/main/por.traineddata
+          
+          # Copier le binaire Tesseract dans la structure du bundle
+          mkdir -p Tesseract-OCR/bin
+          cp $(brew --prefix tesseract)/bin/tesseract Tesseract-OCR/bin/
+          
+          # Vérifier la structure créée
+          tree Tesseract-OCR || ls -R Tesseract-OCR
 
       - name: Build and Package macOS application
         run: |
-          # Cette section ne change plus, elle est correcte
+          # Construire l'application avec la nouvelle structure Tesseract
           pyinstaller --windowed --name sOCRate \
           --icon=assets/icon.icns \
-          --add-data "$(brew --prefix tesseract):Tesseract-OCR" \
+          --add-data "Tesseract-OCR:Tesseract-OCR" \
           --osx-entitlements-file entitlements.plist \
+          --noconfirm \
           socrate.py
           
-          chmod +x "dist/sOCRate.app/Contents/Resources/Tesseract-OCR/bin/tesseract"
+          # Corriger les permissions
+          chmod -R 755 dist/sOCRate.app/Contents/Resources/Tesseract-OCR/bin
           
-          sleep 5
-          
+          # Créer le DMG
           hdiutil create dist/sOCRate.dmg -volname "sOCRate" -srcfolder dist/sOCRate.app
 
       - name: Upload macOS artifact

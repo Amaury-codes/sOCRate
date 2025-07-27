@@ -60,6 +60,7 @@ def setup_tesseract_data():
 APP_NAME = "sOCRate"
 APP_AUTHOR = "Amaury Poussier"
 IS_WINDOWS = sys.platform == "win32"
+IS_MACOS = sys.platform == "darwin"
 
 if IS_WINDOWS:
     import winreg
@@ -293,6 +294,8 @@ class FolderSettingsDialog(ctk.CTkToplevel):
         super().__init__(parent); self.transient(parent)
         self.title("Paramètres de la Règle de Surveillance"); self.geometry("900x620")
         self.result = None; self.create_widgets(config); self.grab_set()
+        # Correction macOS: Forcer le rendu immédiat
+        self.update_idletasks()
 
     def create_widgets(self, config):
         config = config or {}
@@ -396,13 +399,29 @@ class FolderSettingsDialog(ctk.CTkToplevel):
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
+        # Correction macOS: Désactiver le scaling automatique
+        ctk.deactivate_automatic_dpi_awareness()
+        ctk.set_widget_scaling(1.0)
+        ctk.set_window_scaling(1.0)
+        
         try:
             if sys.platform == "win32": self.state('zoomed')
-            elif sys.platform == "darwin": self.attributes('-zoomed', True)
+            elif sys.platform == "darwin": 
+                # Correction macOS: Utiliser une méthode alternative pour maximiser
+                self.after(100, lambda: self.attributes('-zoomed', True))
             else: self.attributes('-zoomed', 1)
         except tk.TclError:
             print("Mode maximisé standard non supporté, passage en mode manuel.")
             self.geometry(f"{self.winfo_screenwidth()}x{self.winfo_screenheight()}+0+0")
+        
+        # Correction macOS: Activer l'application
+        if IS_MACOS:
+            try:
+                from AppKit import NSApp
+                NSApp().activateIgnoringOtherApps_(True)
+            except ImportError:
+                pass
+        
         self.title(f"{APP_NAME} - OCR Automatisé"); self.minsize(800, 600)
         ctk.set_appearance_mode("light"); self.grid_columnconfigure(0, weight=1); self.grid_rowconfigure(0, weight=1)
         self.main_frame = ctk.CTkFrame(self); self.main_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
@@ -454,7 +473,7 @@ class App(ctk.CTk):
         self.textbox_handler = CTkTextboxHandler(self.log_queue); self.textbox_handler.setFormatter(logging.Formatter('%(message)s'))
         logger = logging.getLogger()
         if not logger.handlers: logger.setLevel(logging.INFO); logger.addHandler(file_handler); logger.addHandler(self.textbox_handler)
-        # self.process_log_queue()
+        self.process_log_queue()
 
     def process_log_queue(self):
         try:
@@ -485,6 +504,10 @@ class App(ctk.CTk):
         self.edit_btn.configure(state=state); self.remove_btn.configure(state=state)
 
     def add_folder(self):
+        # Correction macOS: Retarder l'ouverture du dialogue
+        self.after(100, self._add_folder)
+    
+    def _add_folder(self):
         dialog = FolderSettingsDialog(self)
         self.wait_window(dialog)
         if dialog.result:
@@ -495,10 +518,14 @@ class App(ctk.CTk):
     def edit_folder(self):
         idx = self.folder_listbox.curselection()
         if not idx: return
-        dialog = FolderSettingsDialog(self, config=self.monitored_configs[idx[0]])
+        # Correction macOS: Retarder l'ouverture du dialogue
+        self.after(100, lambda: self._edit_folder(idx[0]))
+    
+    def _edit_folder(self, index):
+        dialog = FolderSettingsDialog(self, config=self.monitored_configs[index])
         self.wait_window(dialog)
         if dialog.result:
-            self.monitored_configs[idx[0]] = dialog.result; self.update_folder_listbox()
+            self.monitored_configs[index] = dialog.result; self.update_folder_listbox()
             self.log(f"Règle modifiée pour : {dialog.result['path']}")
 
     def remove_folder(self):
@@ -565,6 +592,19 @@ class App(ctk.CTk):
         except FileNotFoundError: return False
 
 if __name__ == "__main__":
+    # Correction macOS: Configuration globale
+    if IS_MACOS:
+        try:
+            # Désactiver le mode plein écran problématique
+            subprocess.run([
+                'defaults', 'write', 
+                f"{APP_NAME}", 
+                'NSAppSleepDisabled', 
+                '-bool', 'YES'
+            ])
+        except Exception:
+            pass
+            
     app = App()
     app.mainloop()
 
