@@ -454,7 +454,7 @@ class App(ctk.CTk):
         self.textbox_handler = CTkTextboxHandler(self.log_queue); self.textbox_handler.setFormatter(logging.Formatter('%(message)s'))
         logger = logging.getLogger()
         if not logger.handlers: logger.setLevel(logging.INFO); logger.addHandler(file_handler); logger.addHandler(self.textbox_handler)
-        self.process_log_queue()
+        # self.process_log_queue()
 
     def process_log_queue(self):
         try:
