@@ -1,92 +1,98 @@
 # .github/workflows/build.yml
 
-name: Build sOCRate Executables
+name: Build sOCRate Application
 
 on:
   push:
-    branches: [ "main" ]
-  workflow_dispatch:
+    branches: [ "main" ] # Déclenche la compilation à chaque push sur la branche main
+  workflow_dispatch: # Permet de lancer manuellement la compilation depuis l'interface GitHub
 
 jobs:
-  # --- JOB 1 : CONSTRUCTION POUR WINDOWS ---
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Install Tesseract OCR
-        run: choco install tesseract-ocr --params='"/l fra,eng,por"' -y
-      - name: Build Windows executable
-        run: |
-          pyinstaller --windowed --onefile --name sOCRate `
-          --icon=assets/icon.ico `
-          --add-data "C:/Program Files/Tesseract-OCR;Tesseract-OCR" `
-          socrate.py
-      - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sOCRate-Windows-Executable
-          path: dist/sOCRate.exe
-
-  # --- JOB 2 : CONSTRUCTION POUR MACOS (VERSION CORRIGÉE) ---
-  build-macos:
+  build_macos:
     runs-on: macos-latest
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-      - name: Install Python dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install pyobjc-core pyobjc
-      - name: Install Tesseract OCR and dependencies
-        run: |
-          brew install tesseract leptonica
-          
-          # Créer le dossier tessdata dans le bundle
-          mkdir -p Tesseract-OCR/share/tessdata
-          
-          # Télécharger les langues directement dans le bundle
-          curl -L -o Tesseract-OCR/share/tessdata/eng.traineddata https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata
-          curl -L -o Tesseract-OCR/share/tessdata/fra.traineddata https://github.com/tesseract-ocr/tessdata_fast/raw/main/fra.traineddata
-          curl -L -o Tesseract-OCR/share/tessdata/por.traineddata https://github.com/tesseract-ocr/tessdata_fast/raw/main/por.traineddata
-          
-          # Copier le binaire Tesseract dans la structure du bundle
-          mkdir -p Tesseract-OCR/bin
-          cp $(brew --prefix tesseract)/bin/tesseract Tesseract-OCR/bin/
-          
-          # Vérifier la structure créée
-          tree Tesseract-OCR || ls -R Tesseract-OCR
+    - name: Checkout repository
+      uses: actions/checkout@v3
 
-      - name: Build and Package macOS application
-        run: |
-          # Construire l'application avec la nouvelle structure Tesseract
-          pyinstaller --windowed --name sOCRate \
-          --icon=assets/icon.icns \
-          --add-data "Tesseract-OCR:Tesseract-OCR" \
-          --osx-entitlements-file entitlements.plist \
-          --noconfirm \
-          socrate.py
-          
-          # Corriger les permissions
-          chmod -R 755 dist/sOCRate.app/Contents/Resources/Tesseract-OCR/bin
-          
-          # Créer le DMG
-          hdiutil create dist/sOCRate.dmg -volname "sOCRate" -srcfolder dist/sOCRate.app
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
 
-      - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sOCRate-macOS-DiskImage
-          path: dist/sOCRate.dmg
+    - name: Install dependencies (Homebrew)
+      run: |
+        brew install tesseract tesseract-lang
+
+    - name: Install Python packages
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller # On installe PyInstaller sur le runner
+
+    - name: Build macOS Application
+      run: |
+        # On doit trouver où Homebrew a installé Tesseract pour le copier.
+        TESSERACT_PATH=$(brew --prefix tesseract)
+        
+        pyinstaller socrate_app.py --noconfirm --onedir --windowed \
+          --name "sOCRate" \
+          --icon "icon_settings.png" \
+          --add-data "icon_settings.png:." \
+          --add-data "${TESSERACT_PATH}/bin:Tesseract-OCR/bin" \
+          --add-data "${TESSERACT_PATH}/lib:Tesseract-OCR/lib" \
+          --add-data "${TESSERACT_PATH}/share/tessdata:Tesseract-OCR/share/tessdata" \
+          --osx-bundle-identifier "com.votreNom.socrate" \
+          --osx-entitlements-file "entitlements.plist"
+
+    - name: Upload macOS Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: sOCRate-macOS
+        path: dist/sOCRate.app
+
+  build_windows:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Download and Extract Tesseract for Windows
+      shell: pwsh
+      run: |
+        # URL vers une version stable et fiable de Tesseract pour Windows
+        $tesseractUrl = "https://github.com/UB-Mannheim/tesseract/releases/download/v5.3.3/tesseract-ocr-w64-setup-v5.3.3.20231005.exe"
+        Invoke-WebRequest -Uri $tesseractUrl -OutFile tesseract_setup.exe
+        # Installation silencieuse de Tesseract
+        Start-Process -FilePath ".\tesseract_setup.exe" -ArgumentList "/S" -Wait
+        # Le chemin par défaut de l'installation silencieuse
+        $env:TESS_PATH="C:\Program Files\Tesseract-OCR"
+
+    - name: Install Python packages
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: Build Windows Application
+      run: |
+        # Le chemin est fixé par l'installeur Tesseract
+        $TESS_PATH="C:\Program Files\Tesseract-OCR"
+
+        pyinstaller socrate_app.py --noconfirm --onedir --windowed `
+          --name "sOCRate" `
+          --icon "icon_settings.png" `
+          --add-data "icon_settings.png;." `
+          --add-data "$TESS_PATH;Tesseract-OCR"
+
+    - name: Upload Windows Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: sOCRate-Windows
+        path: dist/sOCRate

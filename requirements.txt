@@ -1,10 +1,24 @@
 # requirements.txt
 
-customtkinter
-pillow
-watchdog
-pytesseract
-PyMuPDF
-pypdf
-appdirs
-pyinstaller
+# Framework de l'interface graphique
+PyQt6==6.7.0
+
+# Moteur de reconnaissance OCR
+pytesseract==0.3.10
+
+# Manipulation d'images
+Pillow==10.4.0
+
+# Lecture et manipulation de PDF (essentiel pour la superposition)
+PyMuPDF==1.24.7
+
+# Surveillance des dossiers
+watchdog==4.0.1
+
+# Gestion des dossiers de configuration/logs multiplateforme
+appdirs==1.4.4
+
+# (pypdf n'est plus utilisé dans la dernière version du moteur, 
+#  mais je le laisse au cas où vous en auriez besoin pour d'autres usages.
+#  Vous pouvez le supprimer si vous le souhaitez.)
+pypdf==4.2.0
