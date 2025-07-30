@@ -310,7 +310,7 @@ class App(QMainWindow):
         add_btn.clicked.connect(self.add_folder)
         self.edit_btn = QPushButton()
         self.edit_btn.setObjectName("IconButton")
-        self.edit_btn.setIcon(QIcon("icon_settings.png")) 
+        self.edit_btn.setIcon(QIcon("assets/icon_settings.png")) 
         self.edit_btn.setIconSize(QSize(24, 24))
         self.edit_btn.setToolTip("Modifier la règle sélectionnée")
         self.edit_btn.clicked.connect(self.edit_folder)
