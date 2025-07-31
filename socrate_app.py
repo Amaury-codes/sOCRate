@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QSpinBox, QCheckBox, QDialogButtonBox, QStyle, QGridLayout
 )
 from PyQt6.QtCore import Qt, QTimer, QSize
-from PyQt6.QtGui import QIcon, QTextCursor, QFont
+from PyQt6.QtGui import QIcon, QTextCursor, QFont, QPixmap
 
 # --- Importation du moteur de l'application ---
 from socrate_engine import (
