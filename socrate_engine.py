@@ -61,7 +61,7 @@ def setup_tesseract_data():
         logging.error(f"Erreur fatale lors de la configuration du cache de Tesseract : {e}")
         return None
 
-# --- ✨ NOUVEAU BLOC : Logique Tesseract robuste pour la compilation ✨ ---
+# --- ✨ BLOC CORRIGÉ : Logique Tesseract robuste pour la compilation ✨ ---
 TESSDATA_DIR_CONFIG = ''
 # Détecte si l'application est "gelée" (compilée par PyInstaller)
 is_frozen = getattr(sys, 'frozen', False)
@@ -72,7 +72,12 @@ if is_frozen:
     bundle_dir = sys._MEIPASS
     
     # Chemin explicite vers l'exécutable Tesseract inclus dans notre application
-    tesseract_executable_path = os.path.join(bundle_dir, 'Tesseract-OCR', 'tesseract.exe' if IS_WINDOWS else 'bin/tesseract')
+    if IS_WINDOWS:
+        # Sur Windows, l'exécutable est à la racine du dossier Tesseract-OCR
+        tesseract_executable_path = os.path.join(bundle_dir, 'Tesseract-OCR', 'tesseract.exe')
+    else: # Sur macOS, il est dans un sous-dossier bin
+        tesseract_executable_path = os.path.join(bundle_dir, 'Tesseract-OCR', 'bin', 'tesseract')
+    
     pytesseract.pytesseract.tesseract_cmd = tesseract_executable_path
     
     # Chemin vers le dossier des données linguistiques (tessdata)
@@ -81,6 +86,7 @@ if is_frozen:
     else: # Pour macOS, la structure est différente
         tessdata_path = os.path.join(bundle_dir, 'Tesseract-OCR', 'share', 'tessdata')
     
+    # On définit la variable d'environnement pour que Tesseract trouve ses données
     if os.path.exists(tessdata_path):
         os.environ['TESSDATA_PREFIX'] = tessdata_path
         TESSDATA_DIR_CONFIG = f'--tessdata-dir "{tessdata_path}"'
