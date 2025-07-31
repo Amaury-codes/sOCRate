@@ -394,11 +394,12 @@ class App(QMainWindow):
         while not self.log_queue.empty():
             record = self.log_queue.get()
 
-            # Plafonnement de l'affichage général
+            # Plafonnement de l'affichage général (garde les lignes de progression)
             if self.log_textbox.blockCount() > 500:
-                # On ne supprime que si la ligne à supprimer n'est pas une barre de progression
+                # On ne supprime que si la ligne à supprimer n'est pas une barre de progression active
                 first_block = self.log_textbox.document().firstBlock()
-                if first_block.blockNumber() not in self.progress_lines.values():
+                active_progress_blocks = [d['block'] for d in self.progress_lines.values()]
+                if first_block.blockNumber() not in active_progress_blocks:
                     cursor = self.log_textbox.textCursor()
                     cursor.movePosition(QTextCursor.MoveOperation.Start)
                     cursor.select(QTextCursor.SelectionType.LineUnderCursor)
@@ -407,57 +408,57 @@ class App(QMainWindow):
             
             now = datetime.now().strftime('%H:%M:%S')
 
-            # --- NOUVELLE LOGIQUE DE TRAITEMENT DES ÉVÉNEMENTS ---
+            # --- ✨ LOGIQUE DE MISE À JOUR CORRIGÉE ET ROBUSTE ✨ ---
             if isinstance(record, dict):
                 record_type = record.get("type")
                 path = record.get("path")
                 
                 if record_type == "progress_start":
-                    line_html = f'<span style="color: #888;">[{now}]</span> <span style="color: #A9B7C6;">[INFO] Traitement de \'{record["filename"]}\'... </span><span style="color: #FFD666;">[  0%]</span>'
+                    filename = record.get("filename", "fichier inconnu")
+                    line_html = f'<span style="color: #888;">[{now}]</span> <span style="color: #A9B7C6;">[INFO] Traitement de \'{filename}\'... </span><span style="color: #FFD666;">[  0%]</span>'
                     self.log_textbox.appendHtml(line_html)
-                    # On stocke le numéro de la ligne (block) qu'on vient de créer
-                    self.progress_lines[path] = self.log_textbox.blockCount() - 1
+                    # On stocke le numéro de la ligne ET le nom du fichier
+                    self.progress_lines[path] = {
+                        "block": self.log_textbox.blockCount() - 1,
+                        "filename": filename
+                    }
                 
                 elif record_type == "progress_update" and path in self.progress_lines:
-                    block_number = self.progress_lines[path]
+                    line_data = self.progress_lines[path]
+                    block_number = line_data["block"]
+                    filename = line_data["filename"] # On récupère le nom du fichier sauvegardé
                     progress_percent = record.get("progress", 0)
-                    # Formattage pour que le pourcentage soit toujours sur 3 caractères (ex: [  5%] ou [ 55%] ou [100%])
                     progress_text = f"[{progress_percent: >3d}%]"
                     
-                    # On cherche le nom du fichier depuis le texte déjà présent
+                    line_html = f'<span style="color: #888;">[{now}]</span> <span style="color: #A9B7C6;">[INFO] Traitement de \'{filename}\'... </span><span style="color: #FFD666;">{progress_text}</span>'
+                    
                     cursor = self.log_textbox.textCursor()
                     cursor.movePosition(QTextCursor.MoveOperation.Start)
                     cursor.movePosition(QTextCursor.MoveOperation.NextBlock, QTextCursor.MoveMode.MoveAnchor, block_number)
-                    existing_text = cursor.block().text()
-
-                    # On reconstruit la ligne avec la nouvelle progression
-                    line_html = f'<span style="color: #888;">[{now}]</span> <span style="color: #A9B7C6;">{existing_text.split("[")[1].strip()}... </span><span style="color: #FFD666;">{progress_text}</span>'
-                    
                     cursor.select(QTextCursor.SelectionType.BlockUnderCursor)
-                    cursor.removeSelectedText()
                     cursor.insertHtml(line_html)
 
                 elif record_type == "progress_end" and path in self.progress_lines:
-                    block_number = self.progress_lines[path]
+                    line_data = self.progress_lines[path]
+                    block_number = line_data["block"]
+                    filename = line_data["filename"]
                     status = record.get("status")
                     
+                    if status == "success":
+                        final_html = f'<span style="color: #888;">[{now}]</span> <span style="color: #A9B7C6;">[INFO] Traitement de \'{filename}\'... </span><span style="color: #78FFA4;">[Terminé]</span>'
+                    else: # status == "error"
+                        final_html = f'<span style="color: #888;">[{now}]</span> <span style="color: #A9B7C6;">[INFO] Traitement de \'{filename}\'... </span><span style="color: #FF7575;">[ERREUR]</span>'
+
                     cursor = self.log_textbox.textCursor()
                     cursor.movePosition(QTextCursor.MoveOperation.Start)
                     cursor.movePosition(QTextCursor.MoveOperation.NextBlock, QTextCursor.MoveMode.MoveAnchor, block_number)
-                    existing_text = cursor.block().text()
-                    
-                    if status == "success":
-                        final_html = f'<span style="color: #888;">[{now}]</span> <span style="color: #A9B7C6;">{existing_text.split("[")[1].strip()}... </span><span style="color: #78FFA4;">[Terminé]</span>'
-                    else: # status == "error"
-                        final_html = f'<span style="color: #888;">[{now}]</span> <span style="color: #A9B7C6;">{existing_text.split("[")[1].strip()}... </span><span style="color: #FF7575;">[ERREUR]</span>'
-
                     cursor.select(QTextCursor.SelectionType.BlockUnderCursor)
-                    cursor.removeSelectedText()
                     cursor.insertHtml(final_html)
+                    
                     # On oublie cette ligne, elle est terminée
                     del self.progress_lines[path]
 
-            else: # Fallback pour les messages simples
+            else: # Fallback pour les messages simples (non-progressifs)
                 color = "#A9B7C6"
                 if "[ERROR]" in record or "[CRITICAL]" in record: color = "#FF7575"
                 elif "[WARNING]" in record: color = "#FFD666"
