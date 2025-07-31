@@ -25,6 +25,17 @@ from socrate_engine import (
     open_log_folder, add_to_startup, remove_from_startup, is_in_startup
 )
 
+# --- ✨ NOUVEAUTÉ : Fonction utilitaire pour les chemins d'accès compilés ✨ ---
+def resource_path(relative_path):
+    """ Obtenir le chemin absolu vers une ressource, fonctionne pour le dev et pour PyInstaller """
+    try:
+        # PyInstaller crée un dossier temporaire et stocke le chemin dans _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
 # --- ✨ FEUILLE DE STYLE FINALE ✨ ---
 STYLESHEET = """
 /* --- Fenêtre principale et Dialogue --- */
@@ -310,7 +321,7 @@ class App(QMainWindow):
         add_btn.clicked.connect(self.add_folder)
         self.edit_btn = QPushButton()
         self.edit_btn.setObjectName("IconButton")
-        self.edit_btn.setIcon(QIcon("assets/icon_settings.png")) 
+        self.edit_btn.setIcon(QIcon(resource_path("assets/icon_settings.png"))) 
         self.edit_btn.setIconSize(QSize(24, 24))
         self.edit_btn.setToolTip("Modifier la règle sélectionnée")
         self.edit_btn.clicked.connect(self.edit_folder)

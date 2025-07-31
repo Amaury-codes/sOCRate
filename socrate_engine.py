@@ -72,24 +72,20 @@ if is_frozen:
     bundle_dir = sys._MEIPASS
     
     # Chemin explicite vers l'exécutable Tesseract inclus dans notre application
-    # C'est la ligne la plus importante pour Windows
-    tesseract_executable_path = os.path.join(bundle_dir, 'Tesseract-OCR', 'tesseract.exe')
-    if IS_WINDOWS:
-        pytesseract.pytesseract.tesseract_cmd = tesseract_executable_path
+    tesseract_executable_path = os.path.join(bundle_dir, 'Tesseract-OCR', 'tesseract.exe' if IS_WINDOWS else 'bin/tesseract')
+    pytesseract.pytesseract.tesseract_cmd = tesseract_executable_path
     
     # Chemin vers le dossier des données linguistiques (tessdata)
-    tessdata_path = os.path.join(bundle_dir, 'Tesseract-OCR', 'tessdata')
+    if IS_WINDOWS:
+        tessdata_path = os.path.join(bundle_dir, 'Tesseract-OCR', 'tessdata')
+    else: # Pour macOS, la structure est différente
+        tessdata_path = os.path.join(bundle_dir, 'Tesseract-OCR', 'share', 'tessdata')
+    
     if os.path.exists(tessdata_path):
         os.environ['TESSDATA_PREFIX'] = tessdata_path
         TESSDATA_DIR_CONFIG = f'--tessdata-dir "{tessdata_path}"'
     else:
-        # Tente de gérer le cas macOS où le chemin peut varier légèrement
-        tessdata_path_alt = os.path.join(bundle_dir, 'Tesseract-OCR', 'share', 'tessdata')
-        if os.path.exists(tessdata_path_alt):
-             os.environ['TESSDATA_PREFIX'] = tessdata_path_alt
-             TESSDATA_DIR_CONFIG = f'--tessdata-dir "{tessdata_path_alt}"'
-        else:
-            logging.error(f"Dossier tessdata introuvable dans le bundle.")
+        logging.error(f"Dossier tessdata introuvable dans le bundle à {tessdata_path}")
 
 else:
     # --- Mode Développement (logique inchangée) ---
