@@ -20,8 +20,9 @@ jobs:
         python-version: '3.11'
     - name: Install dependencies (Homebrew)
       run: |
-        brew install tesseract tesseract-lang
-        brew install create-dmg
+        # On s'assure que Homebrew est à jour et les permissions sont correctes
+        brew update
+        brew install tesseract tesseract-lang create-dmg
     - name: Install Python packages
       run: |
         python -m pip install --upgrade pip
@@ -30,8 +31,7 @@ jobs:
     - name: Build macOS Application
       run: |
         TESSERACT_PATH=$(brew --prefix tesseract)
-        export LDFLAGS="-L$(brew --prefix)/lib"
-        # --- ✨ MODIFICATION : On inclut les DEUX fichiers .py ✨ ---
+        export LDFLAGS="-L${TESSERACT_PATH}/lib"
         pyinstaller socrate_app.py socrate_engine.py --noconfirm --onedir --windowed \
           --name "sOCRate" \
           --icon "assets/icon.icns" \
@@ -87,7 +87,7 @@ jobs:
     - name: Build Windows Application
       shell: pwsh
       run: |
-        # --- ✨ MODIFICATION : On inclut les DEUX fichiers .py ✨ ---
+        # --- ✨ CORRECTION FINALE ET CRUCIALE : Ajout des scripts en argument ✨ ---
         pyinstaller socrate_app.py socrate_engine.py --noconfirm --onedir --windowed `
           --name "sOCRate" `
           --icon "assets/icon.ico" `
