@@ -357,4 +357,4 @@ class OCRWatcher(threading.Thread):
 
         def check_and_process(self, path):
             if self.watcher.wait_for_file_stability(path):
-                threading.Thread(target=self.watcher.process_pdf, args=(path,)).start()Tout est ok. Le projet est terminé !
+                threading.Thread(target=self.watcher.process_pdf, args=(path,)).start()
