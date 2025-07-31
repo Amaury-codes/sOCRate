@@ -61,7 +61,7 @@ def setup_tesseract_data():
         logging.error(f"Erreur fatale lors de la configuration du cache de Tesseract : {e}")
         return None
 
-# --- ✨ BLOC FINAL : Logique Tesseract 100% robuste pour la compilation ✨ ---
+# --- ✨ BLOC CORRIGÉ : Logique Tesseract robuste pour la compilation ✨ ---
 TESSDATA_DIR_CONFIG = ''
 # Détecte si l'application est "gelée" (compilée par PyInstaller)
 is_frozen = getattr(sys, 'frozen', False)
@@ -73,21 +73,22 @@ if is_frozen:
     
     # Chemin explicite vers l'exécutable Tesseract inclus dans notre application
     if IS_WINDOWS:
+        # Sur Windows, l'exécutable est à la racine du dossier Tesseract-OCR
         tesseract_executable_path = os.path.join(bundle_dir, 'Tesseract-OCR', 'tesseract.exe')
-    else: # macOS
+    else: # Sur macOS, il est dans un sous-dossier bin
         tesseract_executable_path = os.path.join(bundle_dir, 'Tesseract-OCR', 'bin', 'tesseract')
     
     pytesseract.pytesseract.tesseract_cmd = tesseract_executable_path
     
-    # --- CORRECTION FINALE : Définition du chemin TESSDATA pour Windows ET macOS ---
+    # Chemin vers le dossier des données linguistiques (tessdata)
     if IS_WINDOWS:
         tessdata_path = os.path.join(bundle_dir, 'Tesseract-OCR', 'tessdata')
-    else: # macOS
+    else: # Pour macOS, la structure est différente
         tessdata_path = os.path.join(bundle_dir, 'Tesseract-OCR', 'share', 'tessdata')
     
     # On définit la variable d'environnement pour que Tesseract trouve ses données
     if os.path.exists(tessdata_path):
-        os.environ['TESSDATA_PREFIX'] = tessdata_path # C'est la ligne qui manquait pour macOS
+        os.environ['TESSDATA_PREFIX'] = tessdata_path
         TESSDATA_DIR_CONFIG = f'--tessdata-dir "{tessdata_path}"'
     else:
         logging.error(f"Dossier tessdata introuvable dans le bundle à {tessdata_path}")
@@ -356,4 +357,4 @@ class OCRWatcher(threading.Thread):
 
         def check_and_process(self, path):
             if self.watcher.wait_for_file_stability(path):
-                threading.Thread(target=self.watcher.process_pdf, args=(path,)).start()
+                threading.Thread(target=self.watcher.process_pdf, args=(path,)).start()Tout est ok. Le projet est terminé !

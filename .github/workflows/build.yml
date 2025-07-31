@@ -9,12 +9,11 @@ on:
 
 jobs:
   build_macos:
-    runs-on: macos-14 # On utilise une machine Apple Silicon
+    runs-on: macos-14
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
@@ -22,9 +21,17 @@ jobs:
 
     - name: Install dependencies (Homebrew)
       run: |
-        brew install tesseract tesseract-lang
-        # --- NOUVEAUTÉ : On installe l'outil pour créer le DMG ---
+        brew install tesseract
         brew install create-dmg
+
+    # --- ✨ NOUVELLE ÉTAPE : Téléchargement manuel des packs de langues pour macOS ✨ ---
+    - name: Download additional language packs
+      run: |
+        TESSDATA_DIR=$(brew --prefix tesseract)/share/tessdata
+        echo "Downloading language packs to $TESSDATA_DIR..."
+        curl -L -o "$TESSDATA_DIR/fra.traineddata" "https://github.com/tesseract-ocr/tessdata_fast/raw/main/fra.traineddata"
+        curl -L -o "$TESSDATA_DIR/por.traineddata" "https://github.com/tesseract-ocr/tessdata_fast/raw/main/por.traineddata"
+        echo "Language packs downloaded."
 
     - name: Install Python packages
       run: |
@@ -35,6 +42,7 @@ jobs:
     - name: Build macOS Application
       run: |
         TESSERACT_PATH=$(brew --prefix tesseract)
+        export LDFLAGS="-L$(brew --prefix)/lib"
         pyinstaller socrate_app.py --noconfirm --onedir --windowed \
           --name "sOCRate" \
           --icon "assets/icon.icns" \
@@ -46,7 +54,6 @@ jobs:
           --osx-entitlements-file "entitlements.plist" \
           --target-arch arm64
 
-    # --- NOUVELLE ÉTAPE : Création de l'image disque .dmg ---
     - name: Create DMG Installer
       run: |
         create-dmg \
@@ -60,12 +67,11 @@ jobs:
           --background "dmg-assets/background.png" \
           "dist/sOCRate.dmg" \
           "dist/sOCRate.app/"
-
+          
     - name: Upload macOS DMG Artifact
       uses: actions/upload-artifact@v4
       with:
         name: sOCRate-macOS-arm64
-        # --- MODIFIÉ : On uploade le .dmg, pas le .app ---
         path: dist/sOCRate.dmg
 
   # La section build_windows reste inchangée et correcte
@@ -84,6 +90,7 @@ jobs:
       shell: pwsh
       run: |
         $tessdata_dir = "C:\Program Files\Tesseract-OCR\tessdata"
+        Write-Host "Downloading language packs to $tessdata_dir..."
         Invoke-WebRequest -Uri "https://github.com/tesseract-ocr/tessdata_fast/raw/main/fra.traineddata" -OutFile "$tessdata_dir\fra.traineddata"
         Invoke-WebRequest -Uri "https://github.com/tesseract-ocr/tessdata_fast/raw/main/por.traineddata" -OutFile "$tessdata_dir\por.traineddata"
     - name: Install Python packages
