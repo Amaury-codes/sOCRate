@@ -202,6 +202,8 @@ class OCRWatcher(threading.Thread):
         self.log_queue = log_queue
         self.observer = Observer()
         self.stop_event = threading.Event()
+        # --- NOUVEAUTÉ : On ne permet que 3 OCR en même temps ---
+        self.ocr_semaphore = threading.Semaphore(3)
 
     def run(self):
         self.log("Lancement du scan des fichiers existants...")
@@ -254,55 +256,92 @@ class OCRWatcher(threading.Thread):
         return False
 
     def process_pdf(self, pdf_path):
-        base_folder = os.path.dirname(pdf_path); filename = os.path.basename(pdf_path)
-        config = self.configs_map.get(base_folder)
-        if not config: return
-        self.log(f"Traitement de '{filename}'...")
-        if self.pdf_has_text(pdf_path):
-            self.log(f"'{filename}' contient déjà du texte. Ignoré.", "info"); return
-        temp_output_path = ""
-        try:
-            new_filename = build_new_filename(config, pdf_path, config['path'])
-            output_dest_type = config.get("output_dest_type", "Dans un sous-dossier 'Traités_OCR'")
-            if output_dest_type == "Dans un dossier spécifique": output_folder = build_dynamic_path(config.get("output_path_pattern"))
-            elif output_dest_type == "Dans le même dossier que l'original": output_folder = base_folder
-            else: output_folder = os.path.join(base_folder, "Traités_OCR")
-            os.makedirs(output_folder, exist_ok=True)
-            output_path = os.path.join(output_folder, new_filename)
-            temp_output_path = output_path + ".tmp"
-            pdf_document = fitz.open(pdf_path)
-            for i, page in enumerate(pdf_document):
-                self.log(f"   -> OCR Page {i+1}/{len(pdf_document)} de '{filename}'...")
-                pix = page.get_pixmap(dpi=300); img_bytes = pix.tobytes("png")
-                ocr_data = pytesseract.image_to_data(Image.open(io.BytesIO(img_bytes)), lang=LANG_MAP[config['lang']], output_type=Output.DICT, config=TESSDATA_DIR_CONFIG)
-                for j in range(len(ocr_data['text'])):
-                    text = ocr_data['text'][j]; conf = int(ocr_data['conf'][j])
-                    if conf > 60 and text.strip():
-                        x, y, w, h = ocr_data['left'][j], ocr_data['top'][j], ocr_data['width'][j], ocr_data['height'][j]
-                        rect = fitz.Rect(x, y, x + w, y + h) / 300 * 72
-                        page.insert_text((rect.x0, rect.y1), text, fontsize=h / 300 * 72 * 0.8, render_mode=3)
-            pdf_document.save(temp_output_path, garbage=4, deflate=True, clean=True); pdf_document.close()
-            original_size = os.path.getsize(pdf_path); new_size = os.path.getsize(temp_output_path)
-            size_change = (new_size / original_size - 1) * 100 if original_size > 0 else 0
-            self.log(f"   -> OCR terminé. Augmentation de la taille de {size_change:+.1f}%.", "info")
-            source_action = config.get("source_action", "Conserver l'original")
-            if source_action == "Écraser l'original":
-                final_path = os.path.join(base_folder, new_filename)
-                shutil.move(temp_output_path, final_path)
-                if pdf_path != final_path: os.remove(pdf_path)
-                self.log(f"'{filename}' écrasé par la version OCR '{new_filename}'.")
-            elif source_action == "Déplacer l'original":
-                archive_folder = build_dynamic_path(config.get("archive_path_pattern")); os.makedirs(archive_folder, exist_ok=True)
-                archive_path = os.path.join(archive_folder, filename)
-                shutil.move(pdf_path, archive_path); shutil.move(temp_output_path, output_path)
-                self.log(f"'{filename}' traité. Original déplacé, OCR sauvé.")
-            elif source_action == "Conserver l'original":
-                shutil.move(temp_output_path, output_path)
-                self.log(f"'{filename}' traité. Original conservé, OCR sauvé.")
-        except Exception as e:
-            self.log(f"Erreur critique sur '{filename}': {e}", "error")
-        finally:
-            if os.path.exists(temp_output_path): os.remove(temp_output_path)
+        # Un thread doit attendre ici si 3 autres sont déjà en train de travailler.
+        with self.ocr_semaphore:
+            base_folder = os.path.dirname(pdf_path)
+            filename = os.path.basename(pdf_path)
+            config = self.configs_map.get(base_folder)
+            if not config: return
+
+            # --- MODIFIÉ : On n'affiche plus le message de traitement ici ---
+            # self.log(f"Traitement de '{filename}'...")
+
+            if self.pdf_has_text(pdf_path):
+                self.log(f"'{filename}' contient déjà du texte. Ignoré.", "info")
+                return
+
+            # --- NOUVEAUTÉ : On envoie un événement de DÉBUT de traitement ---
+            self.log_queue.put({
+                "type": "progress_start",
+                "path": pdf_path,
+                "filename": filename
+            })
+
+            temp_output_path = ""
+            try:
+                new_filename = build_new_filename(config, pdf_path, config['path'])
+                output_dest_type = config.get("output_dest_type", "Dans un sous-dossier 'Traités_OCR'")
+                if output_dest_type == "Dans un dossier spécifique": output_folder = build_dynamic_path(config.get("output_path_pattern"))
+                elif output_dest_type == "Dans le même dossier que l'original": output_folder = base_folder
+                else: output_folder = os.path.join(base_folder, "Traités_OCR")
+                os.makedirs(output_folder, exist_ok=True)
+                output_path = os.path.join(output_folder, new_filename)
+                temp_output_path = output_path + ".tmp"
+                pdf_document = fitz.open(pdf_path)
+                total_pages = len(pdf_document)
+
+                for i, page in enumerate(pdf_document):
+                    # --- MODIFIÉ : L'ancien log par page est supprimé ---
+                    # self.log(f"   -> OCR Page {i+1}/{total_pages} de '{filename}'...")
+                    
+                    pix = page.get_pixmap(dpi=300)
+                    img_bytes = pix.tobytes("png")
+                    ocr_data = pytesseract.image_to_data(Image.open(io.BytesIO(img_bytes)), lang=LANG_MAP[config['lang']], output_type=Output.DICT, config=TESSDATA_DIR_CONFIG)
+                    for j in range(len(ocr_data['text'])):
+                        text, conf = ocr_data['text'][j], int(ocr_data['conf'][j])
+                        if conf > 60 and text.strip():
+                            x, y, w, h = ocr_data['left'][j], ocr_data['top'][j], ocr_data['width'][j], ocr_data['height'][j]
+                            rect = fitz.Rect(x, y, x + w, y + h) / 300 * 72
+                            page.insert_text((rect.x0, rect.y1), text, fontsize=h / 300 * 72 * 0.8, render_mode=3)
+                    
+                    # --- NOUVEAUTÉ : On envoie un événement de MISE À JOUR de la progression ---
+                    progress = int(((i + 1) / total_pages) * 100)
+                    self.log_queue.put({
+                        "type": "progress_update",
+                        "path": pdf_path,
+                        "progress": progress
+                    })
+
+                pdf_document.save(temp_output_path, garbage=4, deflate=True, clean=True)
+                pdf_document.close()
+                
+                # Le log sur la taille du fichier est conservé car informatif
+                original_size = os.path.getsize(pdf_path); new_size = os.path.getsize(temp_output_path)
+                size_change = (new_size / original_size - 1) * 100 if original_size > 0 else 0
+                self.log(f"'{filename}' traité. Augmentation de taille: {size_change:+.1f}%.", "info")
+                
+                # ... la logique de déplacement des fichiers reste inchangée ...
+                source_action = config.get("source_action", "Conserver l'original")
+                if source_action == "Écraser l'original":
+                    final_path = os.path.join(base_folder, new_filename)
+                    shutil.move(temp_output_path, final_path)
+                    if pdf_path != final_path: os.remove(pdf_path)
+                elif source_action == "Déplacer l'original":
+                    archive_folder = build_dynamic_path(config.get("archive_path_pattern")); os.makedirs(archive_folder, exist_ok=True)
+                    archive_path = os.path.join(archive_folder, filename)
+                    shutil.move(pdf_path, archive_path); shutil.move(temp_output_path, output_path)
+                elif source_action == "Conserver l'original":
+                    shutil.move(temp_output_path, output_path)
+
+                # --- NOUVEAUTÉ : On envoie un événement de FIN (succès) ---
+                self.log_queue.put({"type": "progress_end", "path": pdf_path, "status": "success"})
+
+            except Exception as e:
+                # --- NOUVEAUTÉ : On envoie un événement de FIN (erreur) ---
+                self.log_queue.put({"type": "progress_end", "path": pdf_path, "status": "error"})
+                self.log(f"Erreur critique sur '{filename}': {e}", "error") # On garde le log détaillé
+            finally:
+                if os.path.exists(temp_output_path): os.remove(temp_output_path)
 
     class PDFHandler(FileSystemEventHandler):
         def __init__(self, watcher):

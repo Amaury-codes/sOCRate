@@ -250,6 +250,7 @@ class App(QMainWindow):
         self.monitored_configs = []
         self.worker_thread = None
         self.log_queue = queue.Queue()
+        self.progress_lines = {}
         self.setup_logging()
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
@@ -392,22 +393,77 @@ class App(QMainWindow):
     def process_log_queue(self):
         while not self.log_queue.empty():
             record = self.log_queue.get()
-            
-            # Si on dépasse 500 lignes, on supprime la plus ancienne
+
+            # Plafonnement de l'affichage général
             if self.log_textbox.blockCount() > 500:
-                cursor = self.log_textbox.textCursor()
-                cursor.movePosition(QTextCursor.MoveOperation.Start)
-                cursor.select(QTextCursor.SelectionType.LineUnderCursor)
-                cursor.removeSelectedText()
-                cursor.deletePreviousChar() # Nettoie le saut de ligne résiduel
+                # On ne supprime que si la ligne à supprimer n'est pas une barre de progression
+                first_block = self.log_textbox.document().firstBlock()
+                if first_block.blockNumber() not in self.progress_lines.values():
+                    cursor = self.log_textbox.textCursor()
+                    cursor.movePosition(QTextCursor.MoveOperation.Start)
+                    cursor.select(QTextCursor.SelectionType.LineUnderCursor)
+                    cursor.removeSelectedText()
+                    cursor.deletePreviousChar()
             
             now = datetime.now().strftime('%H:%M:%S')
-            color = "#A9B7C6"
-            if "[ERROR]" in record or "[CRITICAL]" in record: color = "#FF7575"
-            elif "[WARNING]" in record: color = "#FFD666"
-            elif "terminé" in record or "sauvé" in record or "Lancement" in record or "démarrée": color = "#78FFA4"
-            line = f'<span style="color: #888;">[{now}]</span> <span style="color: {color};">{record}</span>'
-            self.log_textbox.appendHtml(line)
+
+            # --- NOUVELLE LOGIQUE DE TRAITEMENT DES ÉVÉNEMENTS ---
+            if isinstance(record, dict):
+                record_type = record.get("type")
+                path = record.get("path")
+                
+                if record_type == "progress_start":
+                    line_html = f'<span style="color: #888;">[{now}]</span> <span style="color: #A9B7C6;">[INFO] Traitement de \'{record["filename"]}\'... </span><span style="color: #FFD666;">[  0%]</span>'
+                    self.log_textbox.appendHtml(line_html)
+                    # On stocke le numéro de la ligne (block) qu'on vient de créer
+                    self.progress_lines[path] = self.log_textbox.blockCount() - 1
+                
+                elif record_type == "progress_update" and path in self.progress_lines:
+                    block_number = self.progress_lines[path]
+                    progress_percent = record.get("progress", 0)
+                    # Formattage pour que le pourcentage soit toujours sur 3 caractères (ex: [  5%] ou [ 55%] ou [100%])
+                    progress_text = f"[{progress_percent: >3d}%]"
+                    
+                    # On cherche le nom du fichier depuis le texte déjà présent
+                    cursor = self.log_textbox.textCursor()
+                    cursor.movePosition(QTextCursor.MoveOperation.Start)
+                    cursor.movePosition(QTextCursor.MoveOperation.NextBlock, QTextCursor.MoveMode.MoveAnchor, block_number)
+                    existing_text = cursor.block().text()
+
+                    # On reconstruit la ligne avec la nouvelle progression
+                    line_html = f'<span style="color: #888;">[{now}]</span> <span style="color: #A9B7C6;">{existing_text.split("[")[1].strip()}... </span><span style="color: #FFD666;">{progress_text}</span>'
+                    
+                    cursor.select(QTextCursor.SelectionType.BlockUnderCursor)
+                    cursor.removeSelectedText()
+                    cursor.insertHtml(line_html)
+
+                elif record_type == "progress_end" and path in self.progress_lines:
+                    block_number = self.progress_lines[path]
+                    status = record.get("status")
+                    
+                    cursor = self.log_textbox.textCursor()
+                    cursor.movePosition(QTextCursor.MoveOperation.Start)
+                    cursor.movePosition(QTextCursor.MoveOperation.NextBlock, QTextCursor.MoveMode.MoveAnchor, block_number)
+                    existing_text = cursor.block().text()
+                    
+                    if status == "success":
+                        final_html = f'<span style="color: #888;">[{now}]</span> <span style="color: #A9B7C6;">{existing_text.split("[")[1].strip()}... </span><span style="color: #78FFA4;">[Terminé]</span>'
+                    else: # status == "error"
+                        final_html = f'<span style="color: #888;">[{now}]</span> <span style="color: #A9B7C6;">{existing_text.split("[")[1].strip()}... </span><span style="color: #FF7575;">[ERREUR]</span>'
+
+                    cursor.select(QTextCursor.SelectionType.BlockUnderCursor)
+                    cursor.removeSelectedText()
+                    cursor.insertHtml(final_html)
+                    # On oublie cette ligne, elle est terminée
+                    del self.progress_lines[path]
+
+            else: # Fallback pour les messages simples
+                color = "#A9B7C6"
+                if "[ERROR]" in record or "[CRITICAL]" in record: color = "#FF7575"
+                elif "[WARNING]" in record: color = "#FFD666"
+                line = f'<span style="color: #888;">[{now}]</span> <span style="color: {color};">{record}</span>'
+                self.log_textbox.appendHtml(line)
+        
         self.log_textbox.moveCursor(QTextCursor.MoveOperation.End)
     def log(self, msg, level="info"): logging.info(msg) if level=="info" else logging.error(msg)
     def on_save_config(self):
