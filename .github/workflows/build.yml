@@ -9,7 +9,6 @@ on:
 
 jobs:
   build_macos:
-    # --- ✨ MODIFICATION 1 : On demande une machine Apple Silicon (M1/ARM64) ✨ ---
     runs-on: macos-14
 
     steps:
@@ -30,6 +29,9 @@ jobs:
     - name: Build macOS Application
       run: |
         TESSERACT_PATH=$(brew --prefix tesseract)
+        # --- ✨ MODIFICATION FINALE : On aide PyInstaller à trouver les bibliothèques ✨ ---
+        export LDFLAGS="-L$(brew --prefix)/lib"
+        
         pyinstaller socrate_app.py --noconfirm --onedir --windowed \
           --name "sOCRate" \
           --icon "assets/icon.icns" \
@@ -39,7 +41,6 @@ jobs:
           --add-data "${TESSERACT_PATH}/share/tessdata:Tesseract-OCR/share/tessdata" \
           --osx-bundle-identifier "com.amaurypoussier.socrate" \
           --osx-entitlements-file "entitlements.plist" \
-          # --- ✨ MODIFICATION 2 : On force la compilation pour ARM64 uniquement ✨ ---
           --target-arch arm64
 
     - name: Upload macOS Artifact
