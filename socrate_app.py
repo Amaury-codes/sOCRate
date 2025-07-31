@@ -125,7 +125,7 @@ class FolderSettingsDialog(QDialog):
 class App(QMainWindow):
     def __init__(self):
         super().__init__(); self.setObjectName("MainAppWindow"); self.setWindowTitle(f"{APP_NAME}"); self.setMinimumSize(1100, 750)
-        self.setWindowIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)); self.monitored_configs = []; self.worker_thread = None; self.log_queue = queue.Queue()
+        self.setWindowIcon(QIcon(resource_path("assets/icon.png"))); self.monitored_configs = []; self.worker_thread = None; self.log_queue = queue.Queue()
         self.progress_lines = {}; self.setup_logging()
         self.central_widget = QWidget(); self.setCentralWidget(self.central_widget)
         main_v_layout = QVBoxLayout(self.central_widget); self.setup_top_bar(main_v_layout); self.grid_layout = QGridLayout(); main_v_layout.addLayout(self.grid_layout)
@@ -188,49 +188,30 @@ class App(QMainWindow):
     def process_log_queue(self):
         while not self.log_queue.empty():
             record = self.log_queue.get()
-
+            
+            # Plafonnement simple à 500 lignes
             if self.log_textbox.blockCount() > 500:
-                first_block = self.log_textbox.document().firstBlock()
-                active_progress_blocks = [d['block'] for d in self.progress_lines.values()]
-                if first_block.blockNumber() not in active_progress_blocks:
-                    cursor = self.log_textbox.textCursor()
-                    cursor.movePosition(QTextCursor.MoveOperation.Start)
-                    cursor.select(QTextCursor.SelectionType.LineUnderCursor)
-                    cursor.removeSelectedText()
-                    cursor.deletePreviousChar()
+                cursor = self.log_textbox.textCursor()
+                cursor.movePosition(QTextCursor.MoveOperation.Start)
+                cursor.select(QTextCursor.SelectionType.LineUnderCursor)
+                cursor.removeSelectedText()
+                cursor.deletePreviousChar()
             
             now = datetime.now().strftime('%H:%M:%S')
-
-            if isinstance(record, dict):
-                record_type = record.get("type"); path = record.get("path")
+            
+            # Logique d'affichage simple et directe, sans mise à jour de ligne
+            color = "#A9B7C6" # Gris par défaut
+            if isinstance(record, str):
+                if "[ERROR]" in record or "[CRITICAL]" in record:
+                    color = "#FF7575" # Rouge
+                elif "[WARNING]" in record:
+                    color = "#FFD666" # Jaune
+                elif "terminé" in record or "sauvé" in record or "démarrée" in record:
+                    color = "#78FFA4" # Vert
                 
-                if record_type == "progress_start":
-                    filename = record.get("filename", "fichier inconnu")
-                    line_html = f'<span style="color: #888;">[{now}]</span> <span style="color: #A9B7C6;">[INFO] Traitement de \'{filename}\'... </span><span style="color: #FFD666;">[  0%]</span>'
-                    self.log_textbox.appendHtml(line_html)
-                    self.progress_lines[path] = {"block": self.log_textbox.blockCount() - 1, "filename": filename}
-                
-                elif record_type == "progress_update" and path in self.progress_lines:
-                    line_data = self.progress_lines[path]; block_number = line_data["block"]; filename = line_data["filename"]
-                    progress_percent = record.get("progress", 0); progress_text = f"[{progress_percent: >3d}%]"
-                    line_html = f'<span style="color: #888;">[{now}]</span> <span style="color: #A9B7C6;">[INFO] Traitement de \'{filename}\'... </span><span style="color: #FFD666;">{progress_text}</span>'
-                    cursor = self.log_textbox.textCursor(); cursor.movePosition(QTextCursor.MoveOperation.Start)
-                    cursor.movePosition(QTextCursor.MoveOperation.NextBlock, QTextCursor.MoveMode.MoveAnchor, block_number)
-                    cursor.select(QTextCursor.SelectionType.BlockUnderCursor); cursor.insertHtml(line_html)
-
-                elif record_type == "progress_end" and path in self.progress_lines:
-                    line_data = self.progress_lines[path]; block_number = line_data["block"]; filename = line_data["filename"]; status = record.get("status")
-                    if status == "success": final_html = f'<span style="color: #888;">[{now}]</span> <span style="color: #A9B7C6;">[INFO] Traitement de \'{filename}\'... </span><span style="color: #78FFA4;">[Terminé]</span>'
-                    else: final_html = f'<span style="color: #888;">[{now}]</span> <span style="color: #A9B7C6;">[INFO] Traitement de \'{filename}\'... </span><span style="color: #FF7575;">[ERREUR]</span>'
-                    cursor = self.log_textbox.textCursor(); cursor.movePosition(QTextCursor.MoveOperation.Start)
-                    cursor.movePosition(QTextCursor.MoveOperation.NextBlock, QTextCursor.MoveMode.MoveAnchor, block_number)
-                    cursor.select(QTextCursor.SelectionType.BlockUnderCursor); cursor.insertHtml(final_html); del self.progress_lines[path]
-            else:
-                color = "#A9B7C6"
-                if "[ERROR]" in record or "[CRITICAL]" in record: color = "#FF7575"
-                elif "[WARNING]" in record: color = "#FFD666"
                 line = f'<span style="color: #888;">[{now}]</span> <span style="color: {color};">{record}</span>'
                 self.log_textbox.appendHtml(line)
+        
         self.log_textbox.moveCursor(QTextCursor.MoveOperation.End)
 
     def log(self, msg, level="info"): logging.info(msg) if level=="info" else logging.error(msg)
